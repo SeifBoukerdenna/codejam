@@ -362,6 +362,47 @@ CREATE TABLE card_transactions (
     memo                 TEXT
 );
 
+-- What a person decided about a bank statement line the matcher couldn't explain (see reconcile.py).
+CREATE TABLE statement_reviews (
+    bank_txn_id   TEXT PRIMARY KEY REFERENCES bank_statement,
+    resolution    TEXT NOT NULL CHECK (resolution IN ('fee_booked', 'asked_bank', 'cheque_cashed')),
+    gl_account    TEXT REFERENCES gl_accounts,
+    note          TEXT,
+    resolved_by   TEXT REFERENCES users,
+    resolved_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Single-use Brim virtual cards, one per card payment. Issued when the payment is released and sent to the vendor,
+-- who charges it like any card. Locked to that vendor, that exact amount, and one charge. The card number is
+-- simulated: like a real issuer's API, we only ever keep the last 4 digits.
+CREATE TABLE virtual_cards (
+    card_id        TEXT PRIMARY KEY,
+    payment_id     TEXT NOT NULL UNIQUE REFERENCES payments,
+    vendor_id      TEXT NOT NULL REFERENCES vendors,
+    last4          TEXT NOT NULL CHECK (last4 ~ '^[0-9]{4}$'),
+    expires_on     DATE NOT NULL,
+    limit_cents    BIGINT NOT NULL CHECK (limit_cents > 0),
+    currency       TEXT NOT NULL CHECK (currency IN ('CAD', 'USD')),
+    status         TEXT NOT NULL CHECK (status IN ('active', 'used', 'cancelled')),
+    sent_to        TEXT,
+    issued_by      TEXT REFERENCES users,
+    issued_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    closed_at      TIMESTAMPTZ
+);
+
+-- Every attempt to charge a virtual card, approved or declined, with the reason in plain words.
+CREATE TABLE card_authorizations (
+    auth_id        BIGSERIAL PRIMARY KEY,
+    card_id        TEXT NOT NULL REFERENCES virtual_cards,
+    attempted_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    merchant       TEXT NOT NULL,
+    amount_cents   BIGINT NOT NULL,
+    approved       BOOLEAN NOT NULL,
+    reason         TEXT NOT NULL,
+    txn_id         TEXT REFERENCES card_transactions,
+    recorded_by    TEXT REFERENCES users
+);
+
 -- Money paid twice that we're getting back from the vendor. One row per double payment found by
 -- findings.double_payments(); `recovery_key` is its payment ids joined, so it stays stable across reloads.
 CREATE TABLE recoveries (

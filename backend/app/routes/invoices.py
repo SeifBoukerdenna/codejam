@@ -58,7 +58,11 @@ def actions_for(conn, user, inv: dict) -> dict:
         "prepare_payment": (c("payment.prepare") if status == "approved" and not inv["is_credit_note"] and not pay
                             else None),
         "release": c("payment.release", payment_resource(conn, pay)) if pay and pay["status"] == "prepared" else None,
-        "settle": c("payment.settle") if pay and pay["status"] in ("released", "scheduled") else None,
+        "settle": (c("payment.settle") if pay and pay["status"] in ("released", "scheduled") and pay["method"] != "CARD"
+                   else None),
+        # Also offered once the card is used: charging it again is how the demo shows "single-use" (declined).
+        "charge_card": (c("card.record_charge") if pay and pay["method"] == "CARD" and pay["status"] in ("released", "settled")
+                        and pay["reference"] else None),
         "cancel_payment": c("payment.cancel") if pay and pay["status"] in ("prepared", "held", "released", "scheduled") else None,
         "recheck_payment": c("payment.prepare") if pay and pay["status"] == "held" else None,
         "payment_id": pay["payment_id"] if pay else None,
@@ -84,6 +88,7 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
     _invoice(conn, invoice_id)
     invoice = conn.execute(
         """SELECT i.*, v.legal_name AS vendor_name, v.status AS vendor_status, v.category AS vendor_category,
+                  v.preferred_payment_method AS vendor_pay_method,
                   d.name AS department_name, u.full_name AS requester_name, r.full_name AS reviewed_by_name
            FROM invoices i
            LEFT JOIN vendors v USING (vendor_id)
@@ -134,12 +139,22 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
             if invoice_id in f["invoice_ids"]:
                 audit_notes.append(f"{f['message']} Overpaid by ${f['overpaid_cad_cents'] / 100:,.2f}.")
 
+    # The single-use card of the latest card payment, and every attempt to charge it.
+    card = conn.execute(
+        """SELECT c.*, v.legal_name AS vendor_name FROM virtual_cards c JOIN payments p USING (payment_id)
+           JOIN vendors v ON v.vendor_id = c.vendor_id WHERE p.invoice_id = %s ORDER BY c.issued_at DESC LIMIT 1""",
+        (invoice_id,)).fetchone()
+    card_attempts = conn.execute(
+        """SELECT a.*, u.full_name AS recorded_by_name FROM card_authorizations a LEFT JOIN users u ON u.user_id = a.recorded_by
+           WHERE a.card_id = %s ORDER BY a.auth_id DESC""", (card["card_id"],)).fetchall() if card else []
+
     stored_checks = conn.execute("SELECT * FROM check_results WHERE invoice_id = %s", (invoice_id,)).fetchall()
     po = conn.execute("SELECT * FROM purchase_orders WHERE po_id = %s", (invoice["po_id"],)).fetchone() if invoice["po_id"] else None
     contract = (conn.execute("SELECT * FROM contracts WHERE contract_id = %s", (invoice["contract_id"],)).fetchone()
                 if invoice["contract_id"] else None)
     return {
         "invoice": invoice, "lines": lines, "approvals": approval_rows, "payments": payment_rows, "checks": checks,
+        "card": card, "card_attempts": card_attempts,
         "history": history, "po": po, "contract": contract, "extraction": extraction, "audit_notes": audit_notes,
         "review_reasons": review_reasons(conn, invoice, stored_checks) if invoice["status"] == "needs_review" else [],
         "actions": actions_for(conn, user, invoice),
@@ -305,7 +320,10 @@ def decline(invoice_id: str, body: dict = Body(default={}), conn=Depends(get_con
 
 
 @router.post("/invoices/{invoice_id}/payment")
-def prepare_payment(invoice_id: str, conn=Depends(get_conn), user=Depends(current_user)):
+def prepare_payment(invoice_id: str, body: dict = Body(default={}), conn=Depends(get_conn), user=Depends(current_user)):
+    method = body.get("method")
+    if method is not None and method not in payments.METHODS:
+        raise HTTPException(422, "Pay by EFT, CARD or CHEQUE.")
     with conn.transaction():
         inv = _invoice(conn, invoice_id)
         require(conn, user, "payment.prepare")
@@ -315,5 +333,5 @@ def prepare_payment(invoice_id: str, conn=Depends(get_conn), user=Depends(curren
             raise HTTPException(409, "Credit notes are never paid out; they're deducted from the next payment.")
         if _live_payment(conn, invoice_id):
             raise HTTPException(409, "This invoice already has a payment.")
-        payment = payments.prepare(conn, inv, user)
+        payment = payments.prepare(conn, inv, user, method)
     return payment

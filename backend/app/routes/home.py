@@ -4,7 +4,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends
 
-from app import config
+from app import config, reconcile
 from app.auth import current_user
 from app.db import get_conn
 from app.routes.payments import PAYMENT_ROWS_SQL
@@ -49,7 +49,9 @@ def home(conn=Depends(get_conn), user=Depends(current_user)):
     ).fetchall()
 
     user_id = user["user_id"] if user else None
+    bank = reconcile.check_statement(conn)
     todo = {
+        "bank_to_explain": bank["to_explain"],
         "emails_to_sort": _count(conn, "SELECT count(*) AS n FROM emails WHERE intake_status = 'unprocessed'"),
         "replies_to_send": _count(conn, "SELECT count(*) AS n FROM emails WHERE intake_status = 'processed' "
                                         "AND reply_draft IS NOT NULL"),
@@ -74,6 +76,8 @@ def home(conn=Depends(get_conn), user=Depends(current_user)):
     ).fetchall()
 
     return {
+        "bank_in_question_cents": bank["unexplained_cents"] + bank["waiting_cents"],
+        "bank_waiting": bank["unexplained_cents"] == 0 and bank["waiting_cents"] > 0,
         "today": today.isoformat(),
         "paid_this_year_cad_cents": sum(m["total_cad_cents"] for m in paid_by_month),
         "payments_this_year": sum(m["count"] for m in paid_by_month),

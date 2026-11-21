@@ -59,7 +59,7 @@ def can(conn, user: dict | None, action: str, resource: dict | None = None) -> D
 
     if action in {"inbox.process", "document.upload", "invoice.edit", "invoice.submit", "invoice.acknowledge",
                   "invoice.reject", "invoice.recheck", "payment.prepare", "vendor.create", "vendor.request_bank_change",
-                  "email.answer", "recovery.update"}:
+                  "email.answer", "recovery.update", "bank.reconcile"}:
         if role not in PREPARERS:
             return deny(f"{ROLE_WORDS[role]} can't do this; it's AP work.")
         if action == "invoice.reject" and resource and resource["status"] in ("approved", "scheduled", "paid"):
@@ -101,6 +101,12 @@ def can(conn, user: dict | None, action: str, resource: dict | None = None) -> D
     if action == "payment.settle":
         if role not in PREPARERS:
             return deny("Only AP or finance can record a bank settlement.")
+        return allow()
+
+    if action == "card.record_charge":
+        # Stands in for the card network telling us the vendor charged the card (there is no real network).
+        if role not in PREPARERS:
+            return deny("Only AP or finance can record a card charge.")
         return allow()
 
     if action == "vendor.verify_bank_change":

@@ -166,6 +166,32 @@ export function Chips<T extends string>({ value, onChange, options }: {
   );
 }
 
+/** A single-use virtual card, drawn as a card: what it's locked to is printed on its face. */
+export function CardFace({ last4, expires, amount, lockedTo, status }: {
+  last4: string; expires: string; amount: string; lockedTo: string; status: "active" | "used" | "cancelled";
+}) {
+  return (
+    <div className={`cardface ${status}`}>
+      <div className="cardface-top">
+        <div><div className="cardface-brand">Brim</div><div className="cardface-label">Single-use</div></div>
+        <div style={{ textAlign: "right" }}><div className="cardface-label">Exactly</div><div className="cardface-amount num">{amount}</div></div>
+      </div>
+      <div className="cardface-number num">•••• •••• •••• {last4}</div>
+      <div className="cardface-bottom">
+        <div style={{ minWidth: 0 }}>
+          <div className="cardface-label">Only at</div>
+          <div className="cardface-value">{lockedTo}</div>
+        </div>
+        <div style={{ textAlign: "right", flex: "none" }}>
+          <div className="cardface-label">Expires</div>
+          <div className="cardface-value num">{expires}</div>
+        </div>
+      </div>
+      {status !== "active" && <div className="cardface-stamp">{status === "used" ? "Used" : "Cancelled"}</div>}
+    </div>
+  );
+}
+
 /** Small cards in a 2-column grid (1 on phones), for a set of choices that each lead somewhere. */
 export function Cards({ children }: { children: ReactNode }) {
   return <div className="cards">{children}</div>;

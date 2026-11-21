@@ -5,7 +5,8 @@ import { Link, useNavigate, useParams } from "react-router";
 import { send, type Email, type InvoiceDetail as Data, type Permission } from "../api";
 import { ReasonModal, useRunner } from "../components/actions";
 import InvoiceEditor from "../components/InvoiceEditor";
-import { Avatar, Check, Hero, Loading, Notice, Page, Panel, Pill, Row, Section, Tiles } from "../components/ui";
+import CardPanel from "../components/CardPanel";
+import { Avatar, Check, Chips, Hero, Loading, Notice, Page, Panel, Pill, Row, Section, Tiles } from "../components/ui";
 import VendorForm from "../components/VendorForm";
 import {
   APPROVER_ROLE, INVOICE_STATUS, METHOD, PAYMENT_STATUS, PROVINCE, dateTime, instant, longDate, money, shortDate, statusOf,
@@ -35,6 +36,7 @@ function statusSentence(d: Data, today: string, me?: string | null): string {
       if (!pay) return "Payment scheduled";
       if (pay.status === "held") return "Payment on hold";
       if (pay.status === "prepared") return "Waiting for a finance manager to release it";
+      if (pay.status === "released" && pay.method === "CARD") return `Card sent to ${inv.vendor_name}, waiting for their charge`;
       if (pay.status === "released") return `Sent by ${method}, waiting for the bank`;
       return `Scheduled for ${shortDate(pay.scheduled_date, today)}`;
     case "rejected": {
@@ -60,35 +62,42 @@ const EVENT_WORDS: Record<string, string> = {
   "invoice.on_hold": "Put on hold", "invoice.needs_review": "Sent to review", "invoice.reject": "Rejected",
   "invoice.withdraw_from_approval": "Taken back from approval", "payment.prepare": "Payment prepared",
   "payment.hold": "Payment held", "payment.unhold": "Hold lifted", "payment.release": "Payment released",
-  "payment.settle": "Bank confirmed the payment", "payment.cancel": "Payment stopped",
+  "payment.settle": "Payment confirmed", "payment.cancel": "Payment stopped",
+  "card.issued": "Single-use card sent", "card.charge_approved": "Card charge approved",
+  "card.charge_declined": "Card charge declined",
 };
+
+// Audit events as timeline steps (approvals get their role and delegation spelled out).
+function eventSteps(d: Data): Step[] {
+  const steps: Step[] = [];
+  const stepByNo = new Map(d.approvals.map((a) => [a.step_no, a]));
+  for (const e of d.history) {
+    if (e.action === "invoice.approve" || e.action === "invoice.decline") {
+      const a = stepByNo.get(Number((e.after as { step?: number } | null)?.step));
+      steps.push({
+        key: `e${e.event_id}`, title: `${e.action === "invoice.approve" ? "Approved" : "Declined"} by ${e.actor_name}`,
+        sub: [a && (APPROVER_ROLE[a.approver_role] ?? a.approver_role), e.on_behalf_of_name && `for ${e.on_behalf_of_name}`,
+          instant(e.created_at)].filter(Boolean).join(" · "),
+        dot: e.action === "invoice.approve" ? "" : "negative", note: e.reason ?? undefined,
+      });
+      continue;
+    }
+    if (e.action === "invoice.fully_approved" || e.action === "invoice.rejected") continue;
+    steps.push({
+      key: `e${e.event_id}`, title: `${EVENT_WORDS[e.action] ?? e.action.replace(/[._]/g, " ")}${e.actor_name ? ` · ${e.actor_name}` : ""}`,
+      sub: instant(e.created_at),
+      dot: e.action.includes("hold") || e.action === "card.charge_declined" ? "negative" : e.action === "payment.settle" ? "positive" : "",
+      note: e.reason ?? undefined,
+    });
+  }
+  return steps;
+}
 
 function historySteps(d: Data, today: string): Step[] {
   const inv = d.invoice;
+  // The audit log IS the history, in the order things happened.
+  if (inv.source !== "history") return eventSteps(d);
   const steps: Step[] = [];
-  if (inv.source !== "history") {
-    // The audit log IS the history, in the order things happened.
-    const stepByNo = new Map(d.approvals.map((a) => [a.step_no, a]));
-    for (const e of d.history) {
-      if (e.action === "invoice.approve" || e.action === "invoice.decline") {
-        const a = stepByNo.get(Number((e.after as { step?: number } | null)?.step));
-        steps.push({
-          key: `e${e.event_id}`, title: `${e.action === "invoice.approve" ? "Approved" : "Declined"} by ${e.actor_name}`,
-          sub: [a && (APPROVER_ROLE[a.approver_role] ?? a.approver_role), e.on_behalf_of_name && `for ${e.on_behalf_of_name}`,
-            instant(e.created_at)].filter(Boolean).join(" · "),
-          dot: e.action === "invoice.approve" ? "" : "negative", note: e.reason ?? undefined,
-        });
-        continue;
-      }
-      if (e.action === "invoice.fully_approved" || e.action === "invoice.rejected") continue;
-      steps.push({
-        key: `e${e.event_id}`, title: `${EVENT_WORDS[e.action] ?? e.action.replace(/[._]/g, " ")}${e.actor_name ? ` · ${e.actor_name}` : ""}`,
-        sub: instant(e.created_at), dot: e.action.includes("hold") ? "negative" : e.action === "payment.settle" ? "positive" : "",
-        note: e.reason ?? undefined,
-      });
-    }
-    return steps;
-  }
   // History invoices (from the dataset) have no audit events: rebuild the story from approvals and payments.
   if (inv.received_date) steps.push({ key: "received", title: "Received", sub: longDate(inv.received_date), dot: "" });
   for (const a of d.approvals) {
@@ -96,14 +105,17 @@ function historySteps(d: Data, today: string): Step[] {
       sub: `${APPROVER_ROLE[a.approver_role] ?? a.approver_role} · ${dateTime(a.acted_at, today)}`,
       dot: a.action === "approved" ? "" : "negative", note: a.comment ?? undefined });
   }
-  for (const p of d.payments) {
+  // Payments made in the app today are told by their audit events below, not rebuilt here.
+  const appPayments = new Set(d.history.flatMap((e) => [e.entity_type === "payment" ? e.entity_id : null,
+    (e.after as { payment_id?: string } | null)?.payment_id ?? null]));
+  for (const p of d.payments.filter((p) => !appPayments.has(p.payment_id))) {
     const method = (METHOD[p.method] ?? p.method).toLowerCase();
     steps.push({ key: p.payment_id,
       title: p.status === "settled" ? `Paid by ${method}` : p.status === "outstanding" ? "Cheque sent, not cashed yet" : `Payment ${p.status}`,
       sub: `${p.paid_date ? shortDate(p.paid_date, today) : `for ${shortDate(p.scheduled_date, today)}`} · ${p.payment_id}`,
       dot: p.status === "settled" ? "positive" : "" });
   }
-  return steps;
+  return [...steps, ...eventSteps(d)];
 }
 
 // What was printed on the document (identity + where to pay). Business details live in "Details" below.
@@ -122,6 +134,7 @@ export default function InvoiceDetail() {
   const [modal, setModal] = useState<null | "decline" | "reject" | "cancel">(null);
   const [editing, setEditing] = useState(false);
   const [onboarding, setOnboarding] = useState(false);
+  const [method, setMethod] = useState<string | null>(null);
   if (!data || data.invoice.invoice_id !== invoiceId) return <Loading error={error} />;
 
   const inv = data.invoice;
@@ -131,13 +144,14 @@ export default function InvoiceDetail() {
   const pay = data.payments.filter((p) => p.status !== "cancelled").at(-1);
   const x = data.extraction;
   const post = (path: string, body?: unknown) => () => send("POST", path, body ?? {});
+  const payBy = method ?? inv.vendor_pay_method ?? "EFT";
 
   // The single next step for this person, in the order the work flows. If it exists but they may not do it,
   // it shows disabled with the server's reason: that's how separation of duties is visible in the demo.
   const candidates: { perm: Permission; label: string; act: () => Promise<unknown>; done: string }[] = [
     { perm: a.approve, label: `Approve ${amount}`, act: post(`/invoices/${inv.invoice_id}/approve`), done: "Approved" },
     { perm: a.submit, label: "Submit for approval", act: post(`/invoices/${inv.invoice_id}/submit`), done: "Sent for approval" },
-    { perm: a.prepare_payment, label: `Pay ${amount}`, act: post(`/invoices/${inv.invoice_id}/payment`), done: "Payment prepared" },
+    { perm: a.prepare_payment, label: `Pay ${amount}`, act: post(`/invoices/${inv.invoice_id}/payment`, { method: payBy }), done: "Payment prepared" },
     { perm: a.release, label: `Release ${money(pay?.amount_cents, pay?.currency)}`, act: post(`/payments/${a.payment_id}/release`), done: "Payment released" },
     { perm: a.recheck_payment, label: "Re-check the hold", act: post(`/payments/${a.payment_id}/recheck`), done: "Hold lifted" },
     { perm: a.settle, label: "Record bank confirmation", act: post(`/payments/${a.payment_id}/settle`), done: "Marked as paid" },
@@ -156,6 +170,14 @@ export default function InvoiceDetail() {
         {data.review_reasons.length > 0 && (
           <div className="checks" style={{ marginTop: 8 }}>
             {data.review_reasons.map((r) => <Check key={r} tone="warning">{r}</Check>)}
+          </div>
+        )}
+        {a.prepare_payment?.allowed && (
+          <div style={{ marginTop: 16 }}>
+            <div className="small muted" style={{ marginBottom: 8 }}>Pay by</div>
+            <Chips value={payBy} onChange={setMethod} options={[
+              { value: "EFT", label: "Bank transfer" }, { value: "CARD", label: "Virtual card" }, { value: "CHEQUE", label: "Cheque" },
+            ]} />
           </div>
         )}
         <div className="panel-actions">
@@ -206,6 +228,9 @@ export default function InvoiceDetail() {
           {pay.released_by_name && <div className="panel-stat"><span>Released by</span><span>{pay.released_by_name}</span></div>}
         </Panel>
       )}
+
+      {data.card && <CardPanel key={data.card.card_id} card={data.card} attempts={data.card_attempts}
+        permission={a.charge_card} onChanged={reload} />}
     </>
   );
 

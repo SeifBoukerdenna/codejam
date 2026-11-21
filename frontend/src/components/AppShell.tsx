@@ -1,4 +1,4 @@
-import { AuditOutlined, CheckCircleOutlined, ExperimentOutlined, HomeOutlined, InboxOutlined, ShopOutlined, SwapOutlined } from "@ant-design/icons";
+import { AuditOutlined, BankOutlined, CheckCircleOutlined, ExperimentOutlined, HomeOutlined, InboxOutlined, ShopOutlined, SwapOutlined } from "@ant-design/icons";
 import { Select } from "antd";
 import { useEffect, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
@@ -31,6 +31,7 @@ export default function AppShell() {
     { to: "/approvals", label: "Approvals", icon: <CheckCircleOutlined />, count: t?.waiting_for_me ?? 0 },
     { to: "/payments", label: "Payments", icon: <SwapOutlined />,
       count: isFinance ? t?.payments_to_release ?? 0 : isClerk ? t?.approved_to_pay ?? 0 : 0 },
+    { to: "/bank", label: "Bank", icon: <BankOutlined />, count: isClerk || isFinance ? t?.bank_to_explain ?? 0 : 0 },
     { to: "/vendors", label: "Vendors", icon: <ShopOutlined /> },
     { to: "/activity", label: "Activity", icon: <AuditOutlined /> },
     { to: "/fool", label: "Try to fool us", short: "Fool us", icon: <ExperimentOutlined /> },

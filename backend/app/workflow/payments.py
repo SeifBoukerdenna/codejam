@@ -8,6 +8,9 @@ Lifecycle:
   cancelled  stopped before it went out (e.g. a duplicate)
 History rows also have 'scheduled' (queued with the bank) and 'outstanding' (cheque mailed, not cashed).
 
+A virtual card payment (method CARD) gets its single-use card at release, and settles when the vendor's charge
+is approved by the card's rules (workflow/cards.py), not by the "bank confirmation" button.
+
 Credit notes are never paid: approved ones are netted against the vendor's next payment.
 """
 
@@ -16,6 +19,7 @@ import secrets
 from app import audit, config
 from app.checks.duplicates import normalize_invoice_number
 from app.money import apply_rate, fmt
+from app.workflow import cards
 
 ACTIVE_PAYMENT = ("prepared", "held", "released", "scheduled", "outstanding", "settled")
 
@@ -43,6 +47,8 @@ def blockers(conn, payment: dict) -> list[str]:
                        f"and not verified by calling the vendor.")
     if payment["method"] in ("EFT",) and not vendor["bank_account"]:
         reasons.append("No bank account on file for an EFT payment.")
+    if payment["method"] == "CARD" and not vendor["ap_contact_email"]:
+        reasons.append("No email on file to send the virtual card to.")
 
     # Another live payment for the same invoice, or for an invoice with the same vendor + number.
     invoice = conn.execute("SELECT * FROM invoices WHERE invoice_id = %s", (payment["invoice_id"],)).fetchone()
@@ -60,9 +66,14 @@ def blockers(conn, payment: dict) -> list[str]:
     return reasons
 
 
-def prepare(conn, invoice: dict, user: dict) -> dict:
+METHODS = ("EFT", "CARD", "CHEQUE")
+METHOD_WORDS = {"EFT": "Bank transfer", "CARD": "Virtual card", "CHEQUE": "Cheque"}
+
+
+def prepare(conn, invoice: dict, user: dict, method: str | None = None) -> dict:
+    """method defaults to the vendor's preferred way of being paid; AP can pick another one."""
     vendor = conn.execute("SELECT * FROM vendors WHERE vendor_id = %s", (invoice["vendor_id"],)).fetchone()
-    method = vendor["preferred_payment_method"] or "EFT"
+    method = method or vendor["preferred_payment_method"] or "EFT"
     today = config.TODAY
     # DECISION: pay on the due date (keeps cash longer), or today if it's already due.
     scheduled = max(today, invoice["due_date"] or today)
@@ -99,7 +110,7 @@ def prepare(conn, invoice: dict, user: dict) -> dict:
     conn.execute("UPDATE invoices SET status = 'scheduled' WHERE invoice_id = %s", (invoice["invoice_id"],))
     audit.log(conn, actor=user["user_id"], action="payment.prepare", entity_type="invoice",
               entity_id=invoice["invoice_id"], after=payment,
-              reason=payment.get("hold_reason") or f"{method} for {fmt(amount, invoice['currency'])}")
+              reason=payment.get("hold_reason") or f"{METHOD_WORDS[method]} for {fmt(amount, invoice['currency'])}")
     for credit, use in applied:
         conn.execute("UPDATE invoices SET status = 'paid' WHERE invoice_id = %s", (credit["invoice_id"],))
         audit.log(conn, actor=user["user_id"], action="credit_note.applied", entity_type="invoice",
@@ -118,8 +129,11 @@ def release(conn, payment: dict, user: dict) -> dict:
                   entity_id=payment["payment_id"], before={"status": payment["status"]}, after={"status": "held"},
                   reason=" ".join(reasons))
         return {**payment, "status": "held", "hold_reason": " ".join(reasons)}
-    prefix = {"EFT": "SIM-EFT", "CHEQUE": "SIM-CHQ", "CARD": "SIM-VC"}[payment["method"]]
-    reference = f"{prefix}-{secrets.token_hex(4).upper()}"
+    if payment["method"] == "CARD":
+        reference = cards.issue(conn, payment, user)["card_id"]
+    else:
+        prefix = {"EFT": "SIM-EFT", "CHEQUE": "SIM-CHQ"}[payment["method"]]
+        reference = f"{prefix}-{secrets.token_hex(4).upper()}"
     conn.execute("UPDATE payments SET status = 'released', released_by = %s, reference = %s WHERE payment_id = %s",
                  (user["user_id"], reference, payment["payment_id"]))
     audit.log(conn, actor=user["user_id"], action="payment.release", entity_type="payment",
@@ -128,30 +142,36 @@ def release(conn, payment: dict, user: dict) -> dict:
     return {**payment, "status": "released", "reference": reference}
 
 
-def settle(conn, payment: dict, user: dict) -> None:
-    """The (simulated) bank confirms the money arrived."""
+def settle(conn, payment: dict, user: dict, merchant: str | None = None) -> str | None:
+    """The money arrived: the (simulated) bank confirmed it, or the vendor's card charge was approved.
+    Returns the card transaction id for card payments."""
     paid = config.TODAY
     conn.execute("UPDATE payments SET status = 'settled', paid_date = %s WHERE payment_id = %s",
                  (paid, payment["payment_id"]))
     conn.execute("UPDATE invoices SET status = 'paid' WHERE invoice_id = %s", (payment["invoice_id"],))
+    txn_id = None
     if payment["method"] == "CARD":
-        # A virtual card payment also shows up on the card feed, like the history's BRIM-VC rows.
+        # The charge also shows up on the card feed, like the history's ap_virtual_card rows.
         vendor = conn.execute("SELECT legal_name FROM vendors WHERE vendor_id = %s", (payment["vendor_id"],)).fetchone()
         n = conn.execute("SELECT count(*) + 1 AS n FROM card_transactions").fetchone()["n"]
+        txn_id = f"CT-{n:05d}"
         conn.execute(
             """INSERT INTO card_transactions (txn_id, card_id, cardholder_user_id, posted_date, merchant_descriptor,
                                               amount_cents, currency, amount_cad_cents, source, receipt_attached, memo)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'ap_virtual_card', true, %s)""",
-            (f"CT-{n:05d}", f"VC-{payment['payment_id']}", payment["released_by"] or user["user_id"], paid,
-             vendor["legal_name"].upper()[:24], payment["amount_cents"], payment["currency"],
+            (txn_id, payment["reference"] or f"VC-{payment['payment_id']}", payment["released_by"] or user["user_id"], paid,
+             (merchant or vendor["legal_name"]).upper()[:24], payment["amount_cents"], payment["currency"],
              payment["amount_cad_cents"], f"AP payment {payment['invoice_id']}"))
     audit.log(conn, actor=user["user_id"], action="payment.settle", entity_type="payment",
               entity_id=payment["payment_id"], before={"status": payment["status"]},
-              after={"status": "settled", "paid_date": paid}, reason="Bank confirmation (simulated)")
+              after={"status": "settled", "paid_date": paid},
+              reason="Vendor charged the virtual card" if txn_id else "Bank confirmation (simulated)")
+    return txn_id
 
 
 def cancel(conn, payment: dict, user: dict, reason: str) -> None:
     conn.execute("UPDATE payments SET status = 'cancelled' WHERE payment_id = %s", (payment["payment_id"],))
+    cards.cancel_for_payment(conn, payment["payment_id"])
     conn.execute("UPDATE invoices SET status = 'approved' WHERE invoice_id = %s AND status IN ('scheduled', 'approved')",
                  (payment["invoice_id"],))
     audit.log(conn, actor=user["user_id"], action="payment.cancel", entity_type="payment",

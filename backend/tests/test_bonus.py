@@ -7,12 +7,14 @@ exactly the same extraction, checks and routing as a real invoice.
 
 import struct
 import zlib
+from datetime import date
 
 import pytest
 
-from app import findings
+from app import findings, reconcile
 from app.extraction.text import Unreadable, read_document
 from app.pipeline import process_document
+from app.workflow.cards import decide
 
 
 def read_queued(conn, document_ids):
@@ -133,3 +135,96 @@ def test_a_blank_image_is_refused_in_plain_words():
              + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
     with pytest.raises(Unreadable, match="couldn't find any text"):
         read_document(blank, "image/png")
+
+
+# ── single-use virtual card ──
+
+CARD = {"status": "active", "expires_on": date(2026, 12, 2), "limit_cents": 371634, "currency": "CAD"}
+TODAY = date(2026, 11, 2)
+
+
+@pytest.mark.parametrize("merchant, cents, card, approved, words", [
+    ("NORTHBOUND COURIERS", 371634, CARD, True, "Approved"),
+    ("NORTHBOUND COURIERS", 382783, CARD, False, "more than"),          # a 3% card fee added
+    ("NORTHBOUND COURIERS", 185817, CARD, False, "less than"),          # part of it
+    ("QUICKPAY ONLINE STORE", 371634, CARD, False, "only works at"),    # the card number leaked
+    ("NORTHBOUND COURIERS", 371634, {**CARD, "status": "used"}, False, "already been charged"),
+    ("NORTHBOUND COURIERS", 371634, {**CARD, "status": "cancelled"}, False, "cancelled"),
+    ("NORTHBOUND COURIERS", 371634, {**CARD, "expires_on": date(2026, 11, 1)}, False, "expired"),
+])
+def test_card_rules_explain_every_decision(merchant, cents, card, approved, words):
+    ok, reason = decide(card, "Northbound Couriers", merchant, cents, TODAY)
+    assert ok is approved and words in reason
+
+
+def test_pay_by_virtual_card_end_to_end(api, pconn):
+    inv = "AP-00425"   # Northbound Couriers, approved, nothing blocks it
+    pay = api("POST", f"/invoices/{inv}/payment", "U004", json={"method": "CARD"}).json()
+    assert pay["method"] == "CARD" and pay["status"] == "prepared"
+    assert api("POST", f"/payments/{pay['payment_id']}/release", "U004").status_code == 403   # preparer can't release
+    released = api("POST", f"/payments/{pay['payment_id']}/release", "U003").json()
+    card = api("GET", f"/invoices/{inv}", "U004").json()["card"]
+    assert released["reference"] == card["card_id"] and card["status"] == "active"
+    assert card["limit_cents"] == pay["amount_cents"] and card["sent_to"]
+    # No "bank confirmation" shortcut: only the vendor's charge can settle a card payment.
+    assert api("POST", f"/payments/{pay['payment_id']}/settle", "U004").status_code == 409
+
+    charge = lambda amount: api("POST", f"/virtual-cards/{card['card_id']}/charges", "U004",  # noqa: E731
+                                json={"merchant": "NORTHBOUND COURIERS", "amount": amount}).json()
+    assert charge("3827.83")["approved"] is False
+    assert pconn.execute("SELECT status FROM payments WHERE payment_id = %s", (pay["payment_id"],)).fetchone()["status"] == "released"
+    assert charge("3716.34")["approved"] is True
+    assert charge("3716.34")["approved"] is False                     # single use
+
+    d = api("GET", f"/invoices/{inv}", "U004").json()
+    assert d["invoice"]["status"] == "paid" and d["card"]["status"] == "used"
+    assert [a["approved"] for a in d["card_attempts"]] == [False, True, False]
+    txn = pconn.execute("SELECT * FROM card_transactions WHERE memo = %s", (f"AP payment {inv}",)).fetchone()
+    assert txn["source"] == "ap_virtual_card" and txn["amount_cents"] == 371634
+
+
+def test_stopping_a_card_payment_cancels_the_card(api, pconn):
+    pay = api("POST", "/invoices/AP-00425/payment", "U004", json={"method": "CARD"}).json()
+    api("POST", f"/payments/{pay['payment_id']}/release", "U003")
+    card_id = pconn.execute("SELECT card_id FROM virtual_cards WHERE payment_id = %s", (pay["payment_id"],)).fetchone()["card_id"]
+    assert api("POST", f"/payments/{pay['payment_id']}/cancel", "U003", json={"reason": "Vendor asked for EFT"}).status_code == 200
+    r = api("POST", f"/virtual-cards/{card_id}/charges", "U004", json={"merchant": "NORTHBOUND COURIERS", "amount": "3716.34"}).json()
+    assert r["approved"] is False and "cancelled" in r["reason"]
+
+
+# ── bank statement check ──
+
+def test_every_bank_debit_is_matched_or_explained(pconn):
+    r = reconcile.check_statement(pconn)
+    kinds = {}
+    for line in r["lines"]:
+        kinds[line["kind"]] = kinds.get(line["kind"], 0) + 1
+    assert kinds["unknown_debit"] == 5            # pre-authorized debits nobody set up
+    assert kinds["fee_without_cause"] == 6        # wire fees, but we never send wires
+    assert kinds["bank_fee"] == 10                # monthly account fees, not booked
+    assert kinds["cheque_cashed"] == 19           # cleared, but our books say "not cashed"
+    assert kinds["amount_differs"] == 4           # 3 EFTs a cent over + 1 cheque cleared 5 cents over
+    assert "unmatched" not in kinds and r["missing_from_statement"] == []
+    altered = next(l for l in r["lines"] if l["bank_txn_id"] == "BK-00296")
+    assert altered["payment_id"] == "PAY-00347" and altered["at_stake_cents"] == 5 and "altered" in altered["explanation"]
+    assert r["unexplained_cents"] == 152309       # $1,523.09: only the extra cents count, not whole payments
+    letter = reconcile.letter_to_bank(r, "Jordan Okafor")
+    assert "PREAUTH DEBIT 913114" in letter and "(we sent $6,990.48 CAD)" in letter and "$1,523.09" in letter
+
+
+def test_closing_bank_lines_is_audited_and_settles_cashed_cheques(api, pconn):
+    assert api("POST", "/bank/ask", "U014").status_code == 403
+    assert api("POST", "/bank/ask", "U004").json()["asked"] == 15
+    assert api("POST", "/bank/ask", "U004").status_code == 409
+    page = api("GET", "/bank", "U004").json()
+    assert page["unexplained_cents"] == 0 and page["waiting_cents"] == 152309   # asked, not recovered
+
+    assert api("POST", "/bank/book-fees", "U004").json()["booked"] == 10
+    gl = pconn.execute("SELECT DISTINCT gl_account FROM statement_reviews WHERE resolution = 'fee_booked'").fetchall()
+    assert [g["gl_account"] for g in gl] == ["7010"]
+
+    assert api("POST", "/bank/cheques-cashed", "U004").json()["cashed"] == 19
+    assert pconn.execute("SELECT status FROM payments WHERE payment_id = 'PAY-00005'").fetchone()["status"] == "settled"
+    assert api("GET", "/bank", "U004").json()["to_explain"] == 0
+    logged = pconn.execute("SELECT count(*) AS n FROM audit_events WHERE action LIKE 'bank.%%'").fetchone()["n"]
+    assert logged == 15 + 10 + 19

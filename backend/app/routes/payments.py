@@ -6,7 +6,8 @@ from app import findings
 from app.auth import current_user, require
 from app.db import get_conn
 from app.routes.invoices import payment_resource
-from app.workflow import payments
+from app.money import to_cents
+from app.workflow import cards, payments
 
 router = APIRouter(prefix="/api")
 
@@ -73,8 +74,29 @@ def settle(payment_id: str, conn=Depends(get_conn), user=Depends(current_user)):
         require(conn, user, "payment.settle")
         if payment["status"] not in ("released", "scheduled"):
             raise HTTPException(409, "Only a released payment can settle.")
+        if payment["method"] == "CARD":
+            raise HTTPException(409, "A virtual card payment settles when the vendor charges the card.")
         payments.settle(conn, payment, user)
     return {"status": "settled"}
+
+
+@router.post("/virtual-cards/{card_id}/charges")
+def charge_card(card_id: str, body: dict = Body(...), conn=Depends(get_conn), user=Depends(current_user)):
+    """Simulates the card network: the vendor charges the card, and the card's rules approve or decline it.
+    Declines are answered with 200 too: a decline is a normal, recorded outcome, not an API error."""
+    merchant = (body.get("merchant") or "").strip()
+    try:
+        amount = to_cents(str(body.get("amount", "")))
+    except ValueError:
+        raise HTTPException(422, "Amount must be a number, like 3311.11.") from None
+    if not merchant or amount is None or amount <= 0:
+        raise HTTPException(422, "Give the merchant name and a positive amount.")
+    with conn.transaction():
+        require(conn, user, "card.record_charge")
+        card = conn.execute("SELECT * FROM virtual_cards WHERE card_id = %s", (card_id,)).fetchone()
+        if not card:
+            raise HTTPException(404, "Card not found")
+        return cards.record_charge(conn, card, merchant, amount, user)
 
 
 @router.post("/payments/{payment_id}/cancel")

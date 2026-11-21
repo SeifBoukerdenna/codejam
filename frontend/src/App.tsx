@@ -3,6 +3,7 @@ import AppShell from "./components/AppShell";
 import { Empty, Page } from "./components/ui";
 import Activity from "./pages/Activity";
 import Approvals from "./pages/Approvals";
+import Bank from "./pages/Bank";
 import Fool from "./pages/Fool";
 import Home from "./pages/Home";
 import Inbox from "./pages/Inbox";
@@ -22,6 +23,7 @@ export default function App() {
             <Route path="inbox" element={<Inbox />} />
             <Route path="approvals" element={<Approvals />} />
             <Route path="payments" element={<Payments />} />
+            <Route path="bank" element={<Bank />} />
             <Route path="vendors" element={<Vendors />} />
             <Route path="vendors/:vendorId" element={<VendorDetail />} />
             <Route path="invoices/:invoiceId" element={<InvoiceDetail />} />

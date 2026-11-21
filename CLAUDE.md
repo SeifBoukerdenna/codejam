@@ -327,3 +327,19 @@ inline styles.
   invoices count once. Vendor ids are hard-coded only there (`app/demo/`), as a demo script.
 - **A file we can't read** (blank image, damaged PDF) fails with a plain sentence and isn't retried; other worker
   errors are retried up to 3 times.
+- **Single-use virtual card:** one card per card payment, issued at release (so P09–P11 still decide who sends money),
+  locked to the vendor, the **exact** amount and one charge, valid 30 days, sent to the vendor's AP email, last 4
+  digits only stored. A smaller charge is declined too: it would close the single-use card with the invoice part-paid.
+  The card settles the payment; there is no "bank confirmation" button for it. Every attempt is kept with its reason
+  (`card_authorizations`), answering the reviews' top card complaint: "blocked for fraud" and nobody says why.
+  "Charge the card" stands in for the card network (permission `card.record_charge`, AP or finance).
+- **An unverified bank change also holds card payments:** the card is sent by email, and the bank change came by email.
+- **AP picks the payment method** when preparing (defaults to the vendor's preferred one).
+- **Bank statement check** (`reconcile.py`, from Brim's reviews: fees nobody explains, payments "not received"):
+  EFT lines match by the 6-digit trace = last 6 digits of our reference; cleared cheques match an issued cheque of
+  the same amount, oldest first; no exact match but an uncashed cheque within $1 = the same cheque cleared for a
+  different amount (altered cheque: cheque 5018, +$0.05). Monthly account fees get booked to the bank-fees GL
+  (found by name, 7010); wire fees (we never send wires) and pre-authorized debits nobody set up go to the bank in
+  one drafted email. Only the extra amount counts as unexplained when a payment cleared for more than we sent.
+  Asking the bank isn't getting the money back: those debits stay "in question" until answered. A payment settled
+  in the last 3 days may still be in transit, so it isn't flagged as missing from the statement.

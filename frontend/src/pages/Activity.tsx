@@ -24,6 +24,9 @@ const ACTION_WORDS: Record<string, string> = {
   "vendor.release_hold": "Released a vendor hold", "vendor.bank_change_requested": "Recorded a bank change",
   "vendor.bank_change_confirmed": "Verified a bank change", "vendor.bank_change_rejected": "Vendor denied a bank change",
   "recovery.requested": "Asked a vendor for a refund", "recovery.recovered": "Got a double payment back",
+  "card.issued": "Sent a single-use card", "card.charge_approved": "Card charge approved",
+  "card.charge_declined": "Card charge declined", "bank.asked": "Asked the bank about a debit",
+  "bank.fee_booked": "Booked a bank fee", "bank.cheque_cashed": "Matched a cashed cheque",
 };
 
 const HOW: Record<Recovery["kind"], string> = {
@@ -179,7 +182,8 @@ export default function Activity() {
           <div className="list">
             {log.data.map((e) => (
               <Row key={e.event_id}
-                to={e.entity_type === "invoice" ? `/invoices/${e.entity_id}` : e.entity_type === "vendor" ? `/vendors/${e.entity_id}` : undefined}
+                to={e.entity_type === "invoice" ? `/invoices/${e.entity_id}` : e.entity_type === "vendor" ? `/vendors/${e.entity_id}`
+                  : e.entity_type === "bank_line" ? "/bank?tab=done" : undefined}
                 avatar={<Avatar name={e.actor_name ?? "System"} round dark={!e.actor_name} />}
                 title={`${ACTION_WORDS[e.action] ?? e.action.replace(/[._]/g, " ")}${e.entity_type !== "database" ? ` · ${e.entity_id}` : ""}`}
                 sub={[e.actor_name ?? "System", e.on_behalf_of_name && `for ${e.on_behalf_of_name}`, e.reason].filter(Boolean).join(" · ")}

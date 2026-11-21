@@ -75,7 +75,7 @@ export default function Home() {
           )}
         </Panel>
       )}
-      {findings.data && (findings.data.overpaid_cad_cents > 0 || findings.data.tax_at_risk_cents > 0) && (
+      {findings.data && (findings.data.overpaid_cad_cents > 0 || findings.data.tax_at_risk_cents > 0 || data.bank_in_question_cents > 0) && (
         <Panel title="Money to get back">
           <div className="list">
             <Link to="/activity?tab=paid_twice" className="row">
@@ -87,14 +87,24 @@ export default function Home() {
               <span className="row-amount">{money(findings.data.to_recover_cad_cents)}</span>
               <RightOutlined style={{ fontSize: 11, color: "var(--ink-3)" }} />
             </Link>
-            <Link to="/activity?tab=tax" className="row">
+            {findings.data.tax_at_risk_cents > 0 && <Link to="/activity?tab=tax" className="row">
               <div className="row-main">
                 <div className="row-title">Tax we can't claim back</div>
                 <div className="row-sub">{taxInvoices} {plural(taxInvoices, "invoice", "invoices")} to fix</div>
               </div>
               <span className="row-amount">{money(findings.data.tax_at_risk_cents)}</span>
               <RightOutlined style={{ fontSize: 11, color: "var(--ink-3)" }} />
-            </Link>
+            </Link>}
+            {data.bank_in_question_cents > 0 && (
+              <Link to="/bank" className="row">
+                <div className="row-main">
+                  <div className="row-title">Bank debits to explain</div>
+                  <div className="row-sub">{data.bank_waiting ? "Waiting for the bank's answer" : "Ask the bank"}</div>
+                </div>
+                <span className="row-amount">{money(data.bank_in_question_cents)}</span>
+                <RightOutlined style={{ fontSize: 11, color: "var(--ink-3)" }} />
+              </Link>
+            )}
           </div>
         </Panel>
       )}

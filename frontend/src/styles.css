@@ -293,6 +293,31 @@ button.row { border: 0; background: none; width: 100%; color: inherit; }
 .card-result-link { display: inline-block; font-size: 13px; font-weight: 600; margin-top: 4px; }
 .card-result-link:hover { text-decoration: underline; }
 
+/* ── virtual card face ── */
+
+.cardface {
+  position: relative; aspect-ratio: 1.586; border-radius: 18px; padding: 18px 18px 16px; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between; color: #fff;
+  background: radial-gradient(120% 140% at 100% 0%, #3a3a37 0%, #111111 55%);
+}
+.cardface-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.cardface-brand { font-size: 17px; font-weight: 750; letter-spacing: -0.03em; line-height: 1.1; }
+.cardface-amount { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
+.cardface-number { font-size: 17px; letter-spacing: 0.08em; font-weight: 550; }
+.cardface-bottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.cardface-label { font-size: 11px; opacity: 0.65; text-transform: uppercase; letter-spacing: 0.04em; }
+.cardface-value { font-size: 14px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cardface.used, .cardface.cancelled { filter: grayscale(1); }
+.cardface.used > :not(.cardface-stamp), .cardface.cancelled > :not(.cardface-stamp) { opacity: 0.45; }
+.cardface-stamp {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-8deg);
+  border: 2px solid #fff; border-radius: 10px; padding: 4px 14px; font-weight: 750; font-size: 18px; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.charge-form { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.charge-form label { font-size: 12.5px; color: var(--ink-2); display: flex; flex-direction: column; gap: 4px; }
+/* Inputs are grey by default (theme.ts); inside a grey panel they'd vanish, so they turn white there. */
+.panel .ant-input, .panel .ant-input-affix-wrapper { background: var(--bg); }
+
 /* ── draft: a message we wrote, for a person to send ── */
 
 .draft { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg); }

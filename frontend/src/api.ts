@@ -80,7 +80,9 @@ export type HomeData = {
   payments_this_year: number;
   paid_by_month: MonthTotal[];
   paid_daily: { date: string; total_cad_cents: number; count: number }[];
-  todo: Record<"emails_to_sort" | "replies_to_send" | "needs_review" | "on_hold" | "waiting_for_me" | "payments_to_release"
+  bank_in_question_cents: number;
+  bank_waiting: boolean;
+  todo: Record<"bank_to_explain" | "emails_to_sort" | "replies_to_send" | "needs_review" | "on_hold" | "waiting_for_me" | "payments_to_release"
     | "approved_to_pay" | "payments_held", number>;
   scheduled: { count: number; total_cad_cents: number };
   upcoming: PaymentRow[];
@@ -109,6 +111,7 @@ export type Invoice = {
   invoice_id: string;
   vendor_id: string | null;
   vendor_name: string | null;
+  vendor_pay_method?: string | null;
   vendor_status: string | null;
   vendor_category: string | null;
   vendor_invoice_number: string | null;
@@ -183,7 +186,7 @@ export type Permission = { allowed: boolean; reason: string } | null;
 
 export type InvoiceActions = {
   edit: Permission; submit: Permission; recheck: Permission; reject: Permission; approve: Permission;
-  decline: Permission; prepare_payment: Permission; release: Permission; settle: Permission;
+  decline: Permission; prepare_payment: Permission; release: Permission; settle: Permission; charge_card?: Permission;
   cancel_payment: Permission; recheck_payment: Permission; payment_id: string | null;
 };
 
@@ -227,6 +230,31 @@ export type InvoiceDetail = {
   actions: InvoiceActions;
   po: { po_id: string; description: string; total_amount_cents: number } | null;
   contract: { contract_id: string; description: string } | null;
+  card: VirtualCard | null;
+  card_attempts: CardAttempt[];
+};
+
+export type VirtualCard = {
+  card_id: string;
+  payment_id: string;
+  vendor_name: string;
+  last4: string;
+  expires_on: string;
+  limit_cents: number;
+  currency: string;
+  status: "active" | "used" | "cancelled";
+  sent_to: string | null;
+  issued_at: string;
+};
+
+export type CardAttempt = {
+  auth_id: number;
+  attempted_at: string;
+  merchant: string;
+  amount_cents: number;
+  approved: boolean;
+  reason: string;
+  recorded_by_name: string | null;
 };
 
 export type VendorRow = {
@@ -298,6 +326,39 @@ export type Findings = {
   split_invoices: { vendor_name: string; invoice_ids: string[]; combined_cad_cents: number; message: string }[];
   tax_at_risk: TaxAtRisk[];
   tax_at_risk_cents: number;
+};
+
+export type BankLine = {
+  bank_txn_id: string;
+  posted_date: string;
+  description: string;
+  amount_cents: number;
+  at_stake_cents: number;
+  kind: "matched" | "cheque_cashed" | "amount_differs" | "bank_fee" | "fee_without_cause" | "unknown_debit" | "unmatched";
+  title: string;
+  tone: "positive" | "warning" | "negative";
+  explanation: string;
+  todo: "ask_bank" | "book_fee" | "mark_cashed" | null;
+  resolution: "asked_bank" | "fee_booked" | "cheque_cashed" | null;
+  resolved_by_name: string | null;
+  resolved_at: string | null;
+  payment_id: string | null;
+  invoice_id: string | null;
+  vendor_name: string | null;
+};
+
+export type BankPage = {
+  lines: BankLine[];
+  statement_from: string;
+  statement_to: string;
+  matched: number;
+  to_explain: number;
+  unexplained_cents: number;
+  waiting_cents: number;
+  missing_from_statement: { payment_id: string; invoice_id: string; vendor_name: string; amount_cents: number; paid_date: string }[];
+  letter: string;
+  bank_fee_account: string;
+  can_act: { allowed: boolean; reason: string | null };
 };
 
 export type FoolResult = "reading" | "caught" | "got_through" | "unreadable";

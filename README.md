@@ -46,6 +46,13 @@ No `make`? Each target is one `docker compose` command; see the [Makefile](Makef
    goes through the same worker and checks as a real invoice, and the card says what caught it. Judges can download
    a clean invoice from the right panel, edit it, and upload it.
 
+8. **Pay by virtual card**: on an approved invoice (e.g. AP-00425, Northbound) pick *Virtual card* → Pay; release as
+   Elise (U003). The single-use card appears; charge it 3% too much (declined, with the reason), then the exact
+   amount (paid), then again (declined: single use).
+9. **Bank**: every debit on the statement matched or explained. $1,523.09 can't be: pre-authorized debits nobody
+   set up, wire fees for wires we never sent, a cheque that cleared 5 cents over what we wrote. **Write to the bank**
+   drafts the email; book the fees; mark the 19 cashed cheques.
+
 `make reseed` puts everything back to the start.
 
 ## Running more OCR workers (or one on another machine)
