@@ -219,29 +219,35 @@ Brim-specific bonuses worth doing: single-use virtual card payments, and "alread
 
 ## Conventions
 
-- Keep files small and named after what they do (`checks/duplicates.ts`, `checks/tax.ts`, `workflow/routing.ts`).
-- Each check is a pure function: `(invoice, context) => CheckResult[]`. That makes it easy to unit test against the trap list above.
+- Keep files small and named after what they do (`checks/duplicates.py`, `checks/tax.py`, `workflow/routing.py`).
+- Each check is a pure function: `check_x(ctx) -> list[CheckResult]` (all SQL happens once, in `checks/context.py`). That makes it easy to unit test against the trap list above.
 - Don't hardcode vendor IDs or invoice numbers in app logic. Hardcode them only in tests and demo scripts.
 - Commit often with clear messages. Don't commit `.env` or API keys.
 - If a requirement is ambiguous, pick the simplest reasonable reading, leave a `// DECISION:` comment explaining it, and add it to the list below so we can explain it to the judges.
 
-### UI rules (inspired by Wealthsimple / Robinhood: extremely simple)
+### UI rules (modelled on Wealthsimple's app: extremely simple)
 
 The look lives in `frontend/src/styles.css` (tokens + classes), `frontend/src/theme.ts` (Ant Design restyled)
-and `frontend/src/components/ui.tsx` (Page, PageTitle, Hero, Section, Row, Pill, Notice, Empty). Build every
-screen from those pieces; if something is missing, add it there, not as inline styles.
+and `frontend/src/components/ui.tsx` (Page, PageTitle, Hero, Section, Panel, Stat, Row, Avatar, Pill, Notice,
+Check, Tiles, Chips, Empty). Build every screen from those pieces; if something is missing, add it there, not as
+inline styles.
 
+- **Layout:** left sidebar with work-count badges (a bottom tab bar on phones), a main column, and a sticky right
+  panel (`<Page rail={…}>`) for "what to do next". Detail pages pass `head` (who/what + the big number) so on a
+  phone the order is head → panel → details.
 - **One big number per screen** (`Hero`), in words a non-accountant understands: "Paid to vendors this year".
-- **Lists, not spreadsheets** (`Row`): name and one line of context on the left, amount on the right.
-  Use a table only when people genuinely compare columns.
-- **Plain language, never codes**: "Waiting for Elise to approve", not `pending_approval`. Status labels live in
-  `format.ts`. Check results are shown as their sentence, never as a code or a bare "flagged".
-- **Black and white; colour only means something**: green = done/good, amber = needs a human, red = blocked.
-  Always with words (pill or notice), never colour alone. Chart data uses the blue accent.
-- **One primary action per screen**: a black pill button (`<Button type="primary" shape="round" size="large">`).
-- Serif (Instrument Serif) only for page titles; everything else, including big numbers, is Inter.
+  Home's chart is a running total; the big number follows the cursor.
+- **One primary action per screen**, in the right panel: a black pill (`type="primary" shape="round"`).
+  Secondary actions are soft grey pills (`className="soft"`), destructive ones soft red (`"danger-soft"`). If the
+  action exists but isn't allowed, show it disabled with the server's reason under it.
+- **Lists, not spreadsheets** (`Row`): logo, name and one line of context on the left, amount on the right.
+- **Plain language, never codes**: "Waiting for Elise", not `pending_approval`. Labels live in `format.ts`. Checks
+  are shown as their sentence (`Check`), never a code or a bare "flagged".
+- **Black and white; colour only means something**: green = done, amber = needs a person, red = blocked. Badges
+  only where they change what you'd do (held, waiting for release…), never on every row.
+- **One font**, Inter Tight (bundled, works offline). No serif. Few captions: if a sentence explains the UI, cut it.
 - Money arrives from the API as integer cents and goes through `money()`; the browser never does money math.
-- Single narrow column (720px). Must work on a phone (checked at 500px wide).
+- Must work on a phone (checked at 500px wide).
 
 ### Decisions log
 
@@ -251,7 +257,8 @@ screen from those pieces; if something is missing, add it there, not as inline s
   Pre-tax is common practice because tax is recoverable; be ready to defend the choice.
 - **Duplicate matching key:** same vendor (or a flagged look-alike vendor) + normalized invoice number
   (uppercase, keep digits, drop leading zeros and suffixes like `-A`: `FA-000583` → `583`) = block.
-  Same vendor + same total within 30 days with a different number = warn. Matching card transaction = block.
+  Same vendor + same total within 14 days with a different number = warn (see "Duplicate windows" below).
+  Matching employee-card charge = block.
 - **Delegate conflict handling:** if the on-leave approver's delegate would also fill a later step, the
   delegated step escalates to the on-leave approver's own manager instead. Queen Street 002935: step 1 →
   U001 (Liam's manager), step 2 → U003 (finance manager), release → U002. Rejected alternative: U003 does
