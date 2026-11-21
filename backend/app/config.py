@@ -19,3 +19,7 @@ TODAY = date.fromisoformat(os.environ.get("AP_TODAY", "2026-11-02"))
 # approved today sorts and reads correctly next to the history. Audit timestamps are timestamptz instead,
 # shown in the viewer's own time zone.
 LOCAL_TZ = os.environ.get("AP_TIMEZONE", "America/Toronto")
+
+# Secret that signs the audit chain (audit_chain.py). The default is for local development only; in production
+# it comes from a key manager and never sits in the database or the repo.
+AUDIT_KEY = os.environ.get("AUDIT_KEY", "harborline-dev-audit-key").encode()

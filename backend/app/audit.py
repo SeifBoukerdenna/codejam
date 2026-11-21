@@ -1,13 +1,14 @@
 """The one function every state change goes through to leave a trace.
 
 The table is append-only at the database level (a trigger rejects UPDATE/DELETE), so this module only ever
-INSERTs. Call it inside the same transaction as the change it describes: either both are saved or neither.
+INSERTs, and every event is signed into a chain (audit_chain.py) so that even a bypassed trigger is detected.
+Call it inside the same transaction as the change it describes: either both are saved or neither.
 """
 
 from datetime import date, datetime
 from decimal import Decimal
 
-from psycopg.types.json import Jsonb
+from app import audit_chain
 
 
 def _plain(value):
@@ -23,15 +24,13 @@ def _plain(value):
 
 def log(conn, *, actor: str | None, action: str, entity_type: str, entity_id: str,
         before=None, after=None, reason: str | None = None, on_behalf_of: str | None = None) -> None:
-    conn.execute(
-        """INSERT INTO audit_events (actor_user_id, on_behalf_of_user_id, action, entity_type, entity_id,
-                                     before, after, reason)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-        (actor, on_behalf_of, action, entity_type, str(entity_id),
-         Jsonb(_plain(before)) if before is not None else None,
-         Jsonb(_plain(after)) if after is not None else None,
-         reason),
-    )
+    audit_chain.append(conn, {
+        "actor_user_id": actor, "on_behalf_of_user_id": on_behalf_of, "action": action,
+        "entity_type": entity_type, "entity_id": str(entity_id),
+        "before": _plain(before) if before is not None else None,
+        "after": _plain(after) if after is not None else None,
+        "reason": reason,
+    })
 
 
 def changed(before: dict, after: dict) -> tuple[dict, dict]:

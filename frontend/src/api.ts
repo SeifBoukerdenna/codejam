@@ -215,7 +215,10 @@ export type AuditEvent = {
   after: Record<string, unknown> | null;
   reason: string | null;
   created_at: string;
+  hash?: string;   // this event's signature in the audit chain (hex)
 };
+
+export type ChainCheck = { ok: boolean; checked: number; first_bad_event_id: number | null; reason: string; head?: string };
 
 export type InvoiceDetail = {
   invoice: Invoice;

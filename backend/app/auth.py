@@ -53,6 +53,11 @@ def can(conn, user: dict | None, action: str, resource: dict | None = None) -> D
         return deny("Choose who you are first (top right).")
     if user["status"] != "active":
         return deny(f"{user['full_name']} is {user['status'].replace('_', ' ')} and can't act in the system.")
+    if action == "audit.verify":
+        # Checking the chain changes nothing, so the read-only auditor may do it; so may a controller.
+        if user["role"] not in ("auditor", "controller_admin"):
+            return deny("Only the auditor or a controller can verify the audit log.")
+        return allow()
     if user["role"] == "auditor":
         return deny("Auditors have read-only access.")
     role = user["role"]

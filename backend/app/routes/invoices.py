@@ -7,7 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import Response
 from psycopg.types.json import Jsonb
 
-from app import audit, findings
+from app import audit, audit_chain, findings
 from app.auth import can, current_user, require
 from app.db import get_conn
 from app.extraction.extract import LABELS, doubtful_fields, overall
@@ -114,7 +114,8 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
             LEFT JOIN users u ON u.user_id = c.acknowledged_by
             WHERE invoice_id = %s ORDER BY {SEVERITY_ORDER}, check_id""", (invoice_id,)).fetchall()
     history = conn.execute(
-        """SELECT e.*, u.full_name AS actor_name, ob.full_name AS on_behalf_of_name FROM audit_events e
+        f"""SELECT {audit_chain.EVENT_SELECT}, u.full_name AS actor_name, ob.full_name AS on_behalf_of_name
+           FROM audit_events e
            LEFT JOIN users u ON u.user_id = e.actor_user_id LEFT JOIN users ob ON ob.user_id = e.on_behalf_of_user_id
            WHERE (e.entity_type = 'invoice' AND e.entity_id = %s)
               OR (e.entity_type = 'payment' AND e.entity_id IN (SELECT payment_id FROM payments WHERE invoice_id = %s))

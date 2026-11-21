@@ -15,9 +15,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from psycopg.types.json import Jsonb
-
-from app import config, db
+from app import audit, config, db
 from app.money import to_cents
 
 SCHEMA_SQL = Path(__file__).with_name("schema.sql")
@@ -221,11 +219,9 @@ def seed(url: str | None = None) -> dict[str, int]:
         counts["emails"] = load_emails(conn)
         parse_policy_thresholds(conn)
         advance_sequences(conn)
-        conn.execute(
-            """INSERT INTO audit_events (action, entity_type, entity_id, after, reason)
-               VALUES ('system.seed', 'database', 'all', %s, 'Initial load of the Brim AP dataset')""",
-            (Jsonb(counts),),
-        )
+        # The first link of the signed audit chain (audit_chain.py).
+        audit.log(conn, actor=None, action="system.seed", entity_type="database", entity_id="all",
+                  after=counts, reason="Initial load of the Brim AP dataset")
     return counts
 
 

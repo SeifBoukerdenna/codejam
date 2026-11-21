@@ -343,3 +343,12 @@ inline styles.
   one drafted email. Only the extra amount counts as unexplained when a payment cleared for more than we sent.
   Asking the bank isn't getting the money back: those debits stay "in question" until answered. A payment settled
   in the last 3 days may still be in transit, so it isn't flagged as missing from the statement.
+- **Signed audit chain** (`audit_chain.py`): each event stores `hash = HMAC-SHA256(AUDIT_KEY, prev_hash ||
+  canonical JSON of the event)`. The trigger stops edits; the chain makes an edit made with the trigger switched off
+  *detectable*, down to the event (`make tamper` shows it). **HMAC, not a plain hash:** with a plain hash, whoever can
+  edit the table can recompute every hash after their edit. **Advisory lock** (`pg_advisory_xact_lock`) before
+  reading the last hash: two concurrent transactions would otherwise fork the chain; ids are taken under the lock so
+  event_id order is chain order. Rejected: a "notary" process signing after commit (no waiting, but events are
+  briefly unsigned). Production: the key in a KMS, and the head hash copied outside the database regularly, so
+  deleting the newest events (which leaves no broken link) is caught too. Verifying is for the auditor and
+  controllers (it's read-only, so the auditor may run it).

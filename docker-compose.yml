@@ -28,6 +28,7 @@ services:
       DATABASE_URL: postgresql://ap:ap@db:5432/ap
       DATA_DIR: /data/brim_ap_dataset
       AP_TODAY: "2026-11-02"
+      AUDIT_KEY: harborline-dev-audit-key   # signs the audit chain; a KMS-held secret in production
     volumes:
       - ./backend:/app/backend          # live code reload while developing
       - ./data:/data:ro
@@ -43,6 +44,7 @@ services:
       DATABASE_URL: postgresql://ap:ap@db:5432/ap
       DATA_DIR: /data/brim_ap_dataset
       AP_TODAY: "2026-11-02"
+      AUDIT_KEY: harborline-dev-audit-key   # the worker writes audit events too
     volumes:
       - ./backend:/app/backend
       - ./data:/data:ro

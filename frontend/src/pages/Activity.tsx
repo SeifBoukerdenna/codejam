@@ -1,7 +1,7 @@
 import { Button, Drawer } from "antd";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { send, type AuditEvent, type Findings, type Recovery } from "../api";
+import { api, send, type AuditEvent, type ChainCheck, type Findings, type Recovery } from "../api";
 import { useRunner } from "../components/actions";
 import { Avatar, Check, Chips, Draft, Empty, Hero, Loading, Notice, Page, PageTitle, Panel, Pill, Row, Section, Stat } from "../components/ui";
 import { INVOICE_STATUS, instant, longDate, money, plural, statusOf, type Tone } from "../format";
@@ -51,6 +51,7 @@ export default function Activity() {
   const recoveries = useApi<Recovery[]>(tab === "paid_twice" ? "/recoveries" : null);
   const log = useApi<AuditEvent[]>(tab === "log" ? "/audit" : null);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [chain, setChain] = useState<{ busy?: boolean; result?: ChainCheck; refused?: string }>({});
   const f = findings.data;
   if (!f) return <Loading error={findings.error} />;
 
@@ -87,7 +88,29 @@ export default function Activity() {
     ),
     log: (
       <Panel title="Audit log">
-        <p className="muted" style={{ margin: 0, fontSize: 14 }}>Append-only: the database refuses any edit or delete.</p>
+        <p className="muted" style={{ margin: 0, fontSize: 14 }}>
+          Append-only, and every event is signed together with the one before it: an edit made even with the
+          database's protection switched off is found.
+        </p>
+        <div className="panel-actions">
+          <Button type="primary" shape="round" size="large" loading={chain.busy}
+            onClick={async () => {
+              setChain({ busy: true });
+              try { setChain({ result: await api<ChainCheck>("/audit/verify") }); }
+              catch (e) { setChain({ refused: (e as Error).message }); }
+            }}>
+            Verify integrity
+          </Button>
+        </div>
+        {chain.refused && <div className="reason">{chain.refused}</div>}
+        {chain.result && (
+          <div className="checks" style={{ marginTop: 8 }}>
+            <Check tone={chain.result.ok ? "positive" : "negative"}
+              meta={chain.result.ok ? `${chain.result.checked.toLocaleString("en-CA")} signatures checked · latest ${chain.result.head}…` : undefined}>
+              {chain.result.reason}
+            </Check>
+          </div>
+        )}
       </Panel>
     ),
   }[tab];
@@ -187,7 +210,8 @@ export default function Activity() {
                 avatar={<Avatar name={e.actor_name ?? "System"} round dark={!e.actor_name} />}
                 title={`${ACTION_WORDS[e.action] ?? e.action.replace(/[._]/g, " ")}${e.entity_type !== "database" ? ` · ${e.entity_id}` : ""}`}
                 sub={[e.actor_name ?? "System", e.on_behalf_of_name && `for ${e.on_behalf_of_name}`, e.reason].filter(Boolean).join(" · ")}
-                end={<span className="small muted">{instant(e.created_at)}</span>} />
+                end={<><span className="small muted">{instant(e.created_at)}</span>
+                  {e.hash && <span className="small muted num" title="This event's signature in the audit chain">#{e.event_id} · {e.hash.slice(0, 8)}</span>}</>} />
             ))}
           </div>
         </Section>

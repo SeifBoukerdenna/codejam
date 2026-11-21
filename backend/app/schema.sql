@@ -431,7 +431,11 @@ CREATE TABLE audit_events (
     before                JSONB,
     after                 JSONB,
     reason                TEXT,
-    created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Signed chain (audit_chain.py): hash = HMAC(key, prev_hash || this event). Editing or deleting any row,
+    -- even with the trigger switched off, breaks the chain at that row.
+    prev_hash             BYTEA NOT NULL,
+    hash                  BYTEA NOT NULL
 );
 
 CREATE INDEX audit_events_entity_idx ON audit_events (entity_type, entity_id);

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from app import audit, findings
+from app import audit, audit_chain, findings
 from app.auth import current_user, require
 from app.db import get_conn
 
@@ -32,13 +32,20 @@ def my_approvals(conn=Depends(get_conn), user=Depends(current_user)):
 @router.get("/audit")
 def audit_log(limit: int = 300, conn=Depends(get_conn)):
     return conn.execute(
-        """SELECT e.*, u.full_name AS actor_name, ob.full_name AS on_behalf_of_name
+        f"""SELECT {audit_chain.EVENT_SELECT}, u.full_name AS actor_name, ob.full_name AS on_behalf_of_name
            FROM audit_events e
            LEFT JOIN users u ON u.user_id = e.actor_user_id
            LEFT JOIN users ob ON ob.user_id = e.on_behalf_of_user_id
            ORDER BY e.event_id DESC LIMIT %s""",
         (min(limit, 2000),),
     ).fetchall()
+
+
+@router.get("/audit/verify")
+def verify_audit_chain(conn=Depends(get_conn), user=Depends(current_user)):
+    """Re-check every signature in the audit chain (audit_chain.py) and name the first event that doesn't match."""
+    require(conn, user, "audit.verify")
+    return audit_chain.verify(conn)
 
 
 @router.get("/findings")
