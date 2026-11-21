@@ -1,13 +1,17 @@
 """Invoices: list, the full detail page, and every action on one (edit, acknowledge, submit, approve,
 decline, reject, re-check, prepare payment). Each action asks auth.can() first and writes an audit event."""
 
+import struct
+import subprocess
+import tempfile
 from datetime import date
+from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import Response
 from psycopg.types.json import Jsonb
 
-from app import audit, audit_chain, findings
+from app import audit, audit_chain, config, findings
 from app.auth import can, current_user, require
 from app.db import get_conn
 from app.extraction.extract import LABELS, doubtful_fields, overall
@@ -124,7 +128,7 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
     extraction = None
     if invoice["document_id"]:
         x = conn.execute(
-            """SELECT x.engine, x.fields, x.field_confidence, d.filename, d.document_id, d.mime_type
+            """SELECT x.engine, x.fields, x.field_confidence, x.field_sources, d.filename, d.document_id, d.mime_type
                FROM extractions x JOIN documents d USING (document_id)
                WHERE x.document_id = %s ORDER BY x.extraction_id DESC LIMIT 1""", (invoice["document_id"],)).fetchone()
         if x:
@@ -160,6 +164,38 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
         "review_reasons": review_reasons(conn, invoice, stored_checks) if invoice["status"] == "needs_review" else [],
         "actions": actions_for(conn, user, invoice),
     }
+
+
+# DECISION: 150 dpi: sharp at 2× zoom on a laptop, about 200 KB a page. The OCR renders at 300 dpi; the viewer
+# doesn't need that. Boxes are stored as fractions of the page, so they fit any resolution.
+PAGE_DPI = 150
+
+
+@router.get("/documents/{document_id}/page.png")
+def document_page(document_id: int, conn=Depends(get_conn)):
+    """Page 1 as an image, for the side-by-side view. Rendered once per file, cached on disk by its sha256.
+    The pixel size is in the X-Page-Width / X-Page-Height headers."""
+    doc = conn.execute("SELECT mime_type, sha256, content FROM documents WHERE document_id = %s", (document_id,)).fetchone()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if doc["mime_type"] == "application/pdf":
+        cached = config.PAGE_CACHE_DIR / f"{doc['sha256']}.png"
+        if not cached.exists():
+            config.PAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory() as tmp:
+                pdf = Path(tmp) / "doc.pdf"
+                pdf.write_bytes(bytes(doc["content"]))
+                subprocess.run(["pdftoppm", "-r", str(PAGE_DPI), "-png", "-f", "1", "-l", "1", "-singlefile",
+                                str(pdf), str(Path(tmp) / "page")], check=True, capture_output=True, timeout=60)
+                (Path(tmp) / "page.png").replace(cached)
+        image, media = cached.read_bytes(), "image/png"
+    else:
+        image, media = bytes(doc["content"]), doc["mime_type"]   # a scan is shown exactly as it was received
+    headers = {"Cache-Control": "max-age=86400"}
+    if image[:8] == b"\x89PNG\r\n\x1a\n":   # PNG: width and height are bytes 16–24 of the IHDR chunk
+        width, height = struct.unpack(">II", image[16:24])
+        headers.update({"X-Page-Width": str(width), "X-Page-Height": str(height)})
+    return Response(image, media_type=media, headers=headers)
 
 
 @router.get("/documents/{document_id}/file")

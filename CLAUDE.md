@@ -355,3 +355,11 @@ inline styles.
 - **Worker visibility timeout:** a job left `running` for more than 5 minutes (its worker died) is claimed again by
   another worker; after 3 abandons it fails with a plain sentence. Reading a document takes 1–5 s. Rejected: worker
   heartbeats (more moving parts than this scale needs).
+- **Where each field was read** (`extraction/sources.py`), found AFTER the parser, never changing it: words with
+  their boxes from `pdftotext -bbox` (text PDFs) or one extra Tesseract TSV pass in the page mode whose reading
+  we kept (scans), grouped into visual rows; amounts matched by value with the parser's own AMOUNT pattern, on the
+  row with the right label (the LAST "Total" row, not the subtotal); codes and dates by exact characters on their
+  labelled row. **A value we can't find gets no box** (a wrong box teaches people to trust the wrong number);
+  every printed field is found on all 56 incoming documents, the Prairie scan's tax line is the one honest gap.
+  Boxes are fractions of the page (0–1), so they fit any rendering. Page images: page 1 at 150 dpi, cached on disk
+  by the file's sha256; scans are served exactly as received. If locating fails, the invoice is still read.

@@ -13,6 +13,7 @@ import re
 from collections import Counter
 
 from app.extraction.parser import parse
+from app.extraction.sources import field_sources
 from app.extraction.text import read_document
 
 REVIEW_THRESHOLD = 0.8
@@ -111,6 +112,18 @@ def doubtful_fields(confidence: dict) -> list[str]:
 
 def extract(content: bytes, mime_type: str) -> dict:
     engine, texts = read_document(content, mime_type)
-    fields, confidence = merge([parse(t) for t in texts], engine)
+    parses = [parse(t) for t in texts]
+    fields, confidence = merge(parses, engine)
     return {"engine": engine, "raw_text": "\n\n──── next OCR pass ────\n\n".join(texts),
-            "fields": fields, "confidence": confidence}
+            "fields": fields, "confidence": confidence,
+            "field_sources": _sources(content, mime_type, engine, parses, fields)}
+
+
+def _sources(content: bytes, mime_type: str, engine: str, parses: list[dict], fields: dict) -> list[dict]:
+    # DECISION: the boxes are a reading aid, found after the fields were read. If finding them fails, the invoice
+    # is still read and checked; it just shows no highlights. Rejected: failing the whole document over it.
+    try:
+        return field_sources(content, mime_type, engine, parses, fields)
+    except Exception as exc:  # noqa: BLE001 - logged, never fatal
+        print(f"field sources not found: {type(exc).__name__}: {exc}", flush=True)
+        return []

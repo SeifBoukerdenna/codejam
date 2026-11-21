@@ -23,3 +23,6 @@ LOCAL_TZ = os.environ.get("AP_TIMEZONE", "America/Toronto")
 # Secret that signs the audit chain (audit_chain.py). The default is for local development only; in production
 # it comes from a key manager and never sits in the database or the repo.
 AUDIT_KEY = os.environ.get("AUDIT_KEY", "harborline-dev-audit-key").encode()
+
+# Rendered page images for the side-by-side invoice view (re-created on demand, so any folder works).
+PAGE_CACHE_DIR = Path(os.environ.get("PAGE_CACHE_DIR", "/tmp/harborline-pages"))

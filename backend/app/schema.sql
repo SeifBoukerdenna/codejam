@@ -213,6 +213,8 @@ CREATE TABLE extractions (
     raw_text          TEXT NOT NULL,
     fields            JSONB NOT NULL,
     field_confidence  JSONB NOT NULL,
+    -- where on page 1 each field was read: [{field, x0, y0, x1, y1 (0–1), source, ocr_readings?}] (sources.py)
+    field_sources     JSONB NOT NULL DEFAULT '[]',
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

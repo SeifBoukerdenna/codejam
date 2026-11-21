@@ -192,9 +192,10 @@ def process_document(conn, document_id: int) -> str:
     document = conn.execute("SELECT * FROM documents WHERE document_id = %s", (document_id,)).fetchone()
     result = extract(bytes(document["content"]), document["mime_type"])
     conn.execute(
-        """INSERT INTO extractions (document_id, engine, raw_text, fields, field_confidence)
-           VALUES (%s, %s, %s, %s, %s)""",
-        (document_id, result["engine"], result["raw_text"], Jsonb(result["fields"]), Jsonb(result["confidence"])))
+        """INSERT INTO extractions (document_id, engine, raw_text, fields, field_confidence, field_sources)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (document_id, result["engine"], result["raw_text"], Jsonb(result["fields"]), Jsonb(result["confidence"]),
+         Jsonb(result["field_sources"])))
     invoice_id = create_invoice(conn, document, result)
     evaluate(conn, invoice_id, reason=f"New invoice read from {document['filename']}")
     return invoice_id
