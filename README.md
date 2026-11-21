@@ -4,6 +4,8 @@ Supplier invoice to payment for Harborline Logistics: intake → read → code �
 every step audited. CodeJam 16, Brim Financial challenge. Payments are simulated.
 
 Project brief, business rules and the decisions log: [CLAUDE.md](CLAUDE.md). Planted traps: [TRAP_MAP.md](TRAP_MAP.md).
+Architecture diagram: [docs/architecture.excalidraw](docs/architecture.excalidraw). Open it at excalidraw.com
+(File → Open) or with the VS Code Excalidraw extension.
 
 ## Run it
 
