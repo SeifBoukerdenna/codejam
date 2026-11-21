@@ -5,6 +5,11 @@ from app.extraction.extract import well_formed
 from app.money import fmt
 
 
+def _and_list(items: list[str]) -> str:
+    """['GST number', 'bank account', 'email domain'] -> 'GST number, bank account and email domain'."""
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
 def check_vendor(ctx) -> list[CheckResult]:
     vendor, printed = ctx["vendor"], ctx["printed"]
     name = printed.get("vendor_name") or "This vendor"
@@ -25,11 +30,12 @@ def check_vendor(ctx) -> list[CheckResult]:
 
     if ctx["lookalike"]:
         other = ctx["lookalike"]
+        differs = [r.replace("different ", "") for r in other["reasons"] if r.startswith("different")]
         results.append(block("VENDOR_LOOKALIKE",
                              f"“{vendor['legal_name']}” looks like “{other['legal_name']}”, a vendor we've paid "
-                             f"{other['payments']} times, but it has a {', '.join(r.replace('different ', '') for r in other['reasons'] if r.startswith('different'))} "
-                             f"that don't match. This may be an impersonation. Confirm with {other['legal_name']} "
-                             f"using the contact details we already have.", lookalike_of=other["vendor_id"]))
+                             f"{other['payments']} times, but with a different {_and_list(differs)}. This may be an "
+                             f"impersonation. Confirm with {other['legal_name']} using the contact details we already "
+                             f"have.", lookalike_of=other["vendor_id"]))
 
     if ctx["pending_bank_change"]:
         change = ctx["pending_bank_change"]

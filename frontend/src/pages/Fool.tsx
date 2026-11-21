@@ -106,7 +106,7 @@ export default function Fool() {
   );
 
   return (
-    <Page rail={rail} head={head}>
+    <Page rail={rail} railFirst head={head}>
       <Section title="Tricks">
         <Cards>
           {d.scenarios.map((s) => {

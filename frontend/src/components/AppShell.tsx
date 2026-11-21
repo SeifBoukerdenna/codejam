@@ -28,12 +28,12 @@ export default function AppShell() {
     { to: "/", label: "Home", icon: <HomeOutlined />, end: true },
     { to: "/inbox", label: "Inbox", icon: <InboxOutlined />,
       count: isClerk || isFinance ? (t?.emails_to_sort ?? 0) + (t?.needs_review ?? 0) + (t?.replies_to_send ?? 0) : 0 },
-    { to: "/approvals", label: "Approvals", icon: <CheckCircleOutlined />, count: t?.waiting_for_me ?? 0 },
-    { to: "/payments", label: "Payments", icon: <SwapOutlined />,
+    { to: "/approvals", label: "Approvals", short: "Approve", icon: <CheckCircleOutlined />, count: t?.waiting_for_me ?? 0 },
+    { to: "/payments", label: "Payments", short: "Pay", icon: <SwapOutlined />,
       count: isFinance ? t?.payments_to_release ?? 0 : isClerk ? t?.approved_to_pay ?? 0 : 0 },
     { to: "/bank", label: "Bank", icon: <BankOutlined />, count: isClerk || isFinance ? t?.bank_to_explain ?? 0 : 0 },
     { to: "/vendors", label: "Vendors", icon: <ShopOutlined /> },
-    { to: "/activity", label: "Activity", icon: <AuditOutlined /> },
+    { to: "/activity", label: "Activity", short: "Audit", icon: <AuditOutlined /> },
     { to: "/fool", label: "Try to fool us", short: "Fool us", icon: <ExperimentOutlined /> },
   ];
 

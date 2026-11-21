@@ -64,8 +64,9 @@ export default function Bank() {
     </Panel>
   );
 
-  return (
-    <Page rail={rail}>
+  // Title and the big number are the page head, so on a phone the "What to do" panel comes right after them.
+  const head = (
+    <>
       <PageTitle title="Bank statement" />
       <div style={{ marginTop: 26 }}>
         <Hero label="Debits we can't explain" value={money(d.unexplained_cents + d.waiting_cents)}
@@ -74,6 +75,11 @@ export default function Bank() {
             {d.matched} of {d.lines.length} debits match a payment · {shortDate(d.statement_from, today)} to {shortDate(d.statement_to, today)}</span>} />
         <div className="progress"><div style={{ width: `${((d.lines.length - open.length) / d.lines.length) * 100}%`, background: "var(--green)" }} /></div>
       </div>
+    </>
+  );
+
+  return (
+    <Page rail={rail} railFirst head={head}>
 
       {d.missing_from_statement.map((m) => (
         <Check key={m.payment_id} tone="negative">
