@@ -138,6 +138,15 @@ export function instant(iso: string): string {
     .format(new Date(iso));
 }
 
+/** For things that just happened on screen: "just now", "4 min ago". Older than a day shows the date. */
+export function ago(iso: string): string {
+  const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (seconds < 45) return "just now";
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)} h ago`;
+  return instant(iso);
+}
+
 export const PROVINCE: Record<string, string> = {
   ON: "Ontario", QC: "Quebec", BC: "British Columbia", AB: "Alberta", MB: "Manitoba", SK: "Saskatchewan",
   NS: "Nova Scotia", NB: "New Brunswick", NL: "Newfoundland and Labrador", PE: "Prince Edward Island",

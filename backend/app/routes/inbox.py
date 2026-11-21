@@ -5,7 +5,7 @@ import mimetypes
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from app import config, intake
+from app import audit, config, intake
 from app.auth import current_user, require
 from app.db import get_conn
 
@@ -19,7 +19,7 @@ ACCEPTED_TYPES = {"application/pdf", "image/png", "image/jpeg", "image/tiff"}
 def list_emails(conn=Depends(get_conn)):
     return conn.execute(
         """SELECT e.email_id, e.from_name, e.from_address, e.subject, e.received_at, e.attachments, e.classification,
-                  e.intake_status, e.intake_note,
+                  e.intake_status, e.intake_note, e.reply_draft IS NOT NULL AS has_reply,
                   coalesce((SELECT json_agg(json_build_object('invoice_id', i.invoice_id, 'status', i.status,
                                                               'number', i.vendor_invoice_number) ORDER BY i.invoice_id)
                             FROM invoices i WHERE i.email_id = e.email_id), '[]') AS invoices
@@ -29,7 +29,8 @@ def list_emails(conn=Depends(get_conn)):
 
 @router.get("/emails/{email_id}")
 def get_email(email_id: str, conn=Depends(get_conn)):
-    email = conn.execute("SELECT * FROM emails WHERE email_id = %s", (email_id,)).fetchone()
+    email = conn.execute("""SELECT e.*, u.full_name AS answered_by_name FROM emails e
+                            LEFT JOIN users u ON u.user_id = e.answered_by WHERE e.email_id = %s""", (email_id,)).fetchone()
     if not email:
         raise HTTPException(404, "Email not found")
     return email
@@ -47,6 +48,23 @@ def get_attachment(email_id: str, filename: str, conn=Depends(get_conn)):
         raise HTTPException(404, "Attachment file is missing")
     media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     return FileResponse(path, media_type=media_type, content_disposition_type="inline", filename=filename)
+
+
+@router.post("/emails/{email_id}/answered")
+def mark_answered(email_id: str, conn=Depends(get_conn), user=Depends(current_user)):
+    """The AP clerk sent the drafted reply (from their own mail app): close the email and log it."""
+    with conn.transaction():
+        require(conn, user, "email.answer")
+        email = conn.execute("SELECT * FROM emails WHERE email_id = %s", (email_id,)).fetchone()
+        if not email or not email["reply_draft"]:
+            raise HTTPException(409, "There's no drafted reply for this email.")
+        if email["intake_status"] == "answered":
+            raise HTTPException(409, "Already answered.")
+        conn.execute("UPDATE emails SET intake_status = 'answered', answered_by = %s, answered_at = now() WHERE email_id = %s",
+                     (user["user_id"], email_id))
+        audit.log(conn, actor=user["user_id"], action="email.answered", entity_type="email", entity_id=email_id,
+                  before={"status": email["intake_status"]}, after={"status": "answered"}, reason=email["intake_note"])
+    return {"status": "answered"}
 
 
 @router.post("/inbox/process")
@@ -70,9 +88,14 @@ async def upload(file: UploadFile = File(...), conn=Depends(get_conn), user=Depe
         document_id, new = intake.store_document(conn, filename=file.filename or "upload", content=content,
                                                  source="upload", uploaded_by=user["user_id"])
     if not new:
-        existing = conn.execute("SELECT invoice_id FROM invoices WHERE document_id = %s", (document_id,)).fetchone()
-        raise HTTPException(409, "We already have this exact file" +
-                            (f": it's invoice {existing['invoice_id']}." if existing else ", it's being read."))
+        existing = conn.execute(
+            """SELECT i.invoice_id, j.status, j.error FROM documents d LEFT JOIN invoices i USING (document_id)
+               LEFT JOIN extraction_jobs j USING (document_id) WHERE d.document_id = %s""", (document_id,)).fetchone()
+        if existing["invoice_id"]:
+            raise HTTPException(409, f"We already have this exact file: it's invoice {existing['invoice_id']}.")
+        if existing["status"] == "failed":
+            raise HTTPException(409, f"We already tried this exact file. {existing['error']}")
+        raise HTTPException(409, "We already have this exact file, it's being read.")
     return {"document_id": document_id}
 
 

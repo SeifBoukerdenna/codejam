@@ -147,12 +147,13 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
 
 
 @router.get("/documents/{document_id}/file")
-def document_file(document_id: int, conn=Depends(get_conn)):
+def document_file(document_id: int, download: bool = False, conn=Depends(get_conn)):
     doc = conn.execute("SELECT filename, mime_type, content FROM documents WHERE document_id = %s", (document_id,)).fetchone()
     if not doc:
         raise HTTPException(404, "Document not found")
+    disposition = "attachment" if download else "inline"
     return Response(bytes(doc["content"]), media_type=doc["mime_type"],
-                    headers={"Content-Disposition": f'inline; filename="{doc["filename"]}"'})
+                    headers={"Content-Disposition": f'{disposition}; filename="{doc["filename"]}"'})
 
 
 # ── actions ──

@@ -71,5 +71,6 @@ export function useApi<T>(path: string | null) {
     };
   }, [path, userId, version]);
 
-  return { data, error, reload: () => setVersion((v) => v + 1) };
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
+  return { data, error, reload };
 }

@@ -278,6 +278,38 @@ button.row { border: 0; background: none; width: 100%; color: inherit; }
 .mini-table th, .mini-table td { padding: 7px 4px; border-bottom: 1px solid var(--line); text-align: left; }
 .mini-table .r { text-align: right; font-variant-numeric: tabular-nums; }
 
+/* ── cards (a grid of choices) ── */
+
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border-radius: 20px; padding: 18px 18px 16px; display: flex; flex-direction: column; min-width: 0; }
+.card-title { font-weight: 650; font-size: 15.5px; letter-spacing: -0.01em; }
+.card-body { font-size: 14px; color: var(--ink-2); margin-top: 4px; flex: 1; }
+.card-foot { margin-top: 14px; }
+.card-result { display: flex; gap: 10px; align-items: flex-start; }
+.card-result .check-icon { width: 20px; height: 20px; font-size: 10px; }
+.card-result-title { font-weight: 650; font-size: 14px; }
+.card-result-text { font-size: 13px; color: var(--ink-2); margin-top: 1px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.card-result-link { display: inline-block; font-size: 13px; font-weight: 600; margin-top: 4px; }
+.card-result-link:hover { text-decoration: underline; }
+
+/* ── draft: a message we wrote, for a person to send ── */
+
+.draft { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg); }
+.draft-field { display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.draft-field span { flex: none; width: 58px; color: var(--ink-3); }
+.draft-body { padding: 16px; white-space: pre-wrap; font-size: 14.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.draft-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 16px; }
+
+/* ── score (Try to fool us) ── */
+
+.score-bar { display: flex; gap: 4px; margin-top: 14px; }
+.score-bar > span { flex: 1; height: 8px; border-radius: 4px; background: var(--surface-2); }
+.score-bar > span.positive { background: var(--green); }
+.score-bar > span.negative { background: var(--red); }
+.score-bar > span.pending { background: var(--ink-3); opacity: 0.35; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.8; } }
+
 /* ── progress (reading documents) ── */
 
 .progress { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 10px; }
@@ -297,6 +329,12 @@ button.row { border: 0; background: none; width: 100%; color: inherit; }
 .ant-btn.danger-soft { background: var(--red-bg); border-color: transparent; color: var(--red); }
 .ant-btn.danger-soft:not(:disabled):hover { background: #fbdcd9 !important; color: var(--red) !important; border-color: transparent !important; }
 .ant-btn-primary:disabled { background: var(--surface-2) !important; color: var(--ink-3) !important; border-color: transparent !important; }
+/* Toasts are black pills: Ant Design 6 colours the title separately, so set it here, and use icon colours
+   that stay visible on black. */
+.ant-message .ant-message-notice-title { color: #fff !important; font-weight: 550; }
+.ant-message-notice-icon-success { color: #4fd08b !important; }
+.ant-message-notice-icon-error { color: #ff7a6e !important; }
+.ant-message-notice-icon-warning { color: #ffc35a !important; }
 .ant-drawer .ant-drawer-header { border-bottom: 0; }
 .ant-drawer .ant-drawer-body { padding-top: 0; }
 .drawer-title { font-size: 26px; font-weight: 650; letter-spacing: -0.025em; margin: 0 0 4px; }

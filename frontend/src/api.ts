@@ -80,7 +80,7 @@ export type HomeData = {
   payments_this_year: number;
   paid_by_month: MonthTotal[];
   paid_daily: { date: string; total_cad_cents: number; count: number }[];
-  todo: Record<"emails_to_sort" | "needs_review" | "on_hold" | "waiting_for_me" | "payments_to_release"
+  todo: Record<"emails_to_sort" | "replies_to_send" | "needs_review" | "on_hold" | "waiting_for_me" | "payments_to_release"
     | "approved_to_pay" | "payments_held", number>;
   scheduled: { count: number; total_cad_cents: number };
   upcoming: PaymentRow[];
@@ -98,6 +98,10 @@ export type Email = {
   classification: string | null;
   intake_status: string;
   intake_note: string | null;
+  has_reply?: boolean;
+  reply_draft?: string | null;
+  answered_by_name?: string | null;
+  answered_at?: string | null;
   invoices?: { invoice_id: string; status: string; number: string | null }[];
 };
 
@@ -248,13 +252,83 @@ export type InvoiceRow = {
   total_cad_cents: number | null; hold_reason: string | null; is_credit_note: boolean; source: string;
 };
 
+export type DoublePayment = {
+  key: string;
+  kind: "paid_twice" | "about_to_pay_twice" | "paid_by_ap_and_card";
+  vendor_id: string;
+  vendor_name: string;
+  invoice_number: string;
+  invoice_ids: string[];
+  payment_ids: string[];
+  lines: { ref: string; date: string | null; method: string; amount_cad_cents: number; status: string }[];
+  overpaid_cad_cents: number;
+  message: string;
+};
+
+export type Recovery = DoublePayment & {
+  vendor_email: string | null;
+  status: "to_recover" | "requested" | "recovered";
+  requested_by_name: string | null;
+  requested_at: string | null;
+  recovered_by_name: string | null;
+  recovered_at: string | null;
+  letter: string;
+};
+
+export type TaxAtRisk = {
+  invoice_id: string;
+  vendor_invoice_number: string | null;
+  vendor_name: string | null;
+  status: string;
+  currency: string;
+  code: string;
+  message: string;
+  fix: string;
+  at_risk_cents: number;
+};
+
 export type Findings = {
   self_approvals: { invoice_id: string; approver_user_id: string; full_name: string; acted_at: string;
     total_cad_cents: number; vendor_name: string }[];
-  double_payments: { kind: "paid_twice" | "about_to_pay_twice" | "paid_by_ap_and_card"; vendor_name: string;
-    invoice_number: string; invoice_ids: string[]; payment_ids: string[]; overpaid_cad_cents: number; message: string }[];
+  double_payments: DoublePayment[];
   overpaid_cad_cents: number;
+  recovered_cad_cents: number;
+  to_recover_cad_cents: number;
+  to_recover_count: number;
   split_invoices: { vendor_name: string; invoice_ids: string[]; combined_cad_cents: number; message: string }[];
+  tax_at_risk: TaxAtRisk[];
+  tax_at_risk_cents: number;
+};
+
+export type FoolResult = "reading" | "caught" | "got_through" | "unreadable";
+
+export type FoolAttempt = {
+  id: string;
+  kind: "invoice" | "bank_change";
+  scenario: string | null;
+  title: string;
+  created_at: string;
+  by_name: string | null;
+  result: FoolResult;
+  reasons: string[];
+  invoice_id?: string | null;
+  invoice_ids?: (string | null)[];
+  invoice_status?: string | null;
+  vendor_id?: string;
+  vendor_name: string | null;
+  invoice_number?: string | null;
+  total_cents?: number | null;
+  currency?: string | null;
+  document_id?: number;
+};
+
+export type FoolPage = {
+  scenarios: { key: string; title: string; pitch: string; defense: string }[];
+  attempts: FoolAttempt[];
+  caught: number;
+  finished: number;
+  can_try: { allowed: boolean; reason: string | null };
+  samples: { document_id: number; filename: string; vendor_name: string; total_cents: number; currency: string }[];
 };
 
 export type Reference = {

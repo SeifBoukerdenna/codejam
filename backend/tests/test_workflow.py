@@ -5,30 +5,10 @@ become savepoints inside it), so tests don't affect each other or the trap check
 """
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app.auth import can
-from app.db import get_conn
-from app.main import app
 from app.workflow import payments
 from app.workflow.routing import plan_route
-
-
-@pytest.fixture
-def api(pconn):
-    pconn.execute("SELECT 1")  # open the outer transaction; everything below nests inside it
-
-    def same_conn():
-        yield pconn
-
-    app.dependency_overrides[get_conn] = same_conn
-    client = TestClient(app)
-
-    def call(method, path, user, **kwargs):
-        return client.request(method, f"/api{path}", headers={"X-User-Id": user}, **kwargs)
-
-    yield call
-    app.dependency_overrides.clear()
 
 
 def invoice_id(conn, filename):

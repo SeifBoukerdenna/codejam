@@ -58,7 +58,8 @@ def can(conn, user: dict | None, action: str, resource: dict | None = None) -> D
     role = user["role"]
 
     if action in {"inbox.process", "document.upload", "invoice.edit", "invoice.submit", "invoice.acknowledge",
-                  "invoice.reject", "invoice.recheck", "payment.prepare", "vendor.create", "vendor.request_bank_change"}:
+                  "invoice.reject", "invoice.recheck", "payment.prepare", "vendor.create", "vendor.request_bank_change",
+                  "email.answer", "recovery.update"}:
         if role not in PREPARERS:
             return deny(f"{ROLE_WORDS[role]} can't do this; it's AP work.")
         if action == "invoice.reject" and resource and resource["status"] in ("approved", "scheduled", "paid"):

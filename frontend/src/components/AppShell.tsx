@@ -1,13 +1,14 @@
-import { AuditOutlined, CheckCircleOutlined, HomeOutlined, InboxOutlined, ShopOutlined, SwapOutlined } from "@ant-design/icons";
+import { AuditOutlined, CheckCircleOutlined, ExperimentOutlined, HomeOutlined, InboxOutlined, ShopOutlined, SwapOutlined } from "@ant-design/icons";
 import { Select } from "antd";
 import { useEffect, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import type { HomeData } from "../api";
 import { ROLE, longDate } from "../format";
 import { useApi, useSession } from "../session";
+import { CHANGED } from "./actions";
 import { Avatar } from "./ui";
 
-type Item = { to: string; label: string; icon: ReactNode; end?: boolean; count?: number };
+type Item = { to: string; label: string; short?: string; icon: ReactNode; end?: boolean; count?: number };
 
 // Left sidebar on desktop, bottom tab bar on phones. Counts are this user's open work, like an inbox badge.
 export default function AppShell() {
@@ -16,17 +17,23 @@ export default function AppShell() {
   const { pathname } = useLocation();
   // Badges refresh on every page change, so a count drops right after you clear an item.
   useEffect(() => reload(), [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    window.addEventListener(CHANGED, reload);
+    return () => window.removeEventListener(CHANGED, reload);
+  }, [reload]);
   const t = data?.todo;
   const isFinance = user && ["finance_manager", "controller_admin"].includes(user.role);
   const isClerk = user?.role === "ap_clerk";
   const nav: Item[] = [
     { to: "/", label: "Home", icon: <HomeOutlined />, end: true },
-    { to: "/inbox", label: "Inbox", icon: <InboxOutlined />, count: isClerk || isFinance ? (t?.emails_to_sort ?? 0) + (t?.needs_review ?? 0) : 0 },
+    { to: "/inbox", label: "Inbox", icon: <InboxOutlined />,
+      count: isClerk || isFinance ? (t?.emails_to_sort ?? 0) + (t?.needs_review ?? 0) + (t?.replies_to_send ?? 0) : 0 },
     { to: "/approvals", label: "Approvals", icon: <CheckCircleOutlined />, count: t?.waiting_for_me ?? 0 },
     { to: "/payments", label: "Payments", icon: <SwapOutlined />,
       count: isFinance ? t?.payments_to_release ?? 0 : isClerk ? t?.approved_to_pay ?? 0 : 0 },
     { to: "/vendors", label: "Vendors", icon: <ShopOutlined /> },
     { to: "/activity", label: "Activity", icon: <AuditOutlined /> },
+    { to: "/fool", label: "Try to fool us", short: "Fool us", icon: <ExperimentOutlined /> },
   ];
 
   return (
@@ -56,7 +63,7 @@ export default function AppShell() {
 
       <nav className="tabbar">
         {nav.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.end}>{n.icon}<span>{n.label}</span></NavLink>
+          <NavLink key={n.to} to={n.to} end={n.end}>{n.icon}<span>{n.short ?? n.label}</span></NavLink>
         ))}
       </nav>
     </div>

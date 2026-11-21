@@ -51,6 +51,8 @@ def home(conn=Depends(get_conn), user=Depends(current_user)):
     user_id = user["user_id"] if user else None
     todo = {
         "emails_to_sort": _count(conn, "SELECT count(*) AS n FROM emails WHERE intake_status = 'unprocessed'"),
+        "replies_to_send": _count(conn, "SELECT count(*) AS n FROM emails WHERE intake_status = 'processed' "
+                                        "AND reply_draft IS NOT NULL"),
         "needs_review": _count(conn, "SELECT count(*) AS n FROM invoices WHERE status = 'needs_review'"),
         "on_hold": _count(conn, "SELECT count(*) AS n FROM invoices WHERE status = 'on_hold'"),
         "waiting_for_me": _count(

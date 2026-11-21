@@ -2,6 +2,7 @@
 
 from app.checks import CheckResult, block, info, warn
 from app.extraction.extract import well_formed
+from app.money import fmt
 
 
 def check_vendor(ctx) -> list[CheckResult]:
@@ -33,7 +34,7 @@ def check_vendor(ctx) -> list[CheckResult]:
     if ctx["pending_bank_change"]:
         change = ctx["pending_bank_change"]
         results.append(block("BANK_CHANGE_UNVERIFIED",
-                             f"{vendor['legal_name']}'s bank account was changed on {change['changed_at']} "
+                             f"The bank account for {vendor['legal_name']} was changed on {change['changed_at']:%B %-d, %Y} "
                              f"({change['request_channel'].replace('_', ' ')}) and nobody has confirmed it by calling "
                              f"the vendor. Hold until someone calls them at the number on file from before the change.",
                              change_id=change["change_id"]))
@@ -49,9 +50,19 @@ def check_vendor(ctx) -> list[CheckResult]:
                              f"The invoice shows GST/HST number {gst}, but our records for {vendor['legal_name']} have "
                              f"{vendor['gst_hst_number']}."))
     charged_tax = (ctx["invoice"]["gst_hst_cents"] or 0) + (ctx["invoice"]["pst_qst_cents"] or 0)
-    if not gst and charged_tax and vendor["country"] == "CA" and ctx["invoice"]["source"] != "history":
+    inv = ctx["invoice"]
+    if not gst and charged_tax and vendor["country"] == "CA" and inv["source"] != "history":
         results.append(warn("GST_NUMBER_MISSING",
-                            "Tax is charged but no GST/HST number is printed, so we can't claim the input tax credit."))
+                            f"Tax is charged but no GST/HST number is printed, so we can't claim the "
+                            f"{fmt(inv['gst_hst_cents'], inv['currency'])} back from the CRA.",
+                            at_risk_cents=inv["gst_hst_cents"] or 0, fix="Ask the vendor for their GST/HST number"))
+    # Only a QST registrant may charge QST, and Quebec only refunds it with the vendor's QST number on file.
+    qst_charged = any(t["code"] == "QST9975" for t in ctx["printed_taxes"])
+    if (qst_charged and not printed.get("vendor_qst") and not vendor["qst_number"] and inv["source"] != "history"):
+        results.append(warn("QST_NUMBER_MISSING",
+                            f"QST of {fmt(inv['pst_qst_cents'], inv['currency'])} is charged, but there's no QST number on "
+                            f"the invoice or on file, so we can't claim it back from Revenu Québec.",
+                            at_risk_cents=inv["pst_qst_cents"] or 0, fix="Ask the vendor for their QST number"))
 
     # Where the invoice asks us to send money vs. the bank account on file.
     acct, transit, inst = printed.get("bank_account"), printed.get("bank_transit"), printed.get("bank_institution")

@@ -197,6 +197,29 @@ def hold_vendor(vendor_id: str, body: dict = Body(default={}), conn=Depends(get_
     return {"status": new_status}
 
 
+def record_bank_change(conn, vendor_id: str, user: dict, inst: str, transit: str, account: str, channel: str,
+                       note: str | None = None) -> str:
+    """Store a bank-change request as PENDING. The vendor record keeps its old details; every invoice and payment
+    for the vendor is re-checked, so they're held until someone else verifies the change by callback.
+    Used by the API below and by the 'Try to fool us' demo, so both behave exactly the same."""
+    vendor = _vendor(conn, vendor_id)
+    require(conn, user, "vendor.request_bank_change")
+    n = conn.execute("SELECT max(substring(change_id from 4)::int) + 1 AS n FROM bank_change_history").fetchone()["n"]
+    change_id = f"BC-{n:03d}"
+    conn.execute(
+        """INSERT INTO bank_change_history (change_id, vendor_id, changed_at, changed_by_user_id, request_channel,
+                                            verified_by_callback, old_account_last4, new_account_last4,
+                                            new_bank_institution, new_bank_transit, new_bank_account)
+           VALUES (%s, %s, %s, %s, %s, false, %s, %s, %s, %s, %s)""",
+        (change_id, vendor_id, config.TODAY, user["user_id"], channel,
+         (vendor["bank_account"] or "")[-4:] or None, account[-4:], inst, transit, account))
+    audit.log(conn, actor=user["user_id"], action="vendor.bank_change_requested", entity_type="vendor",
+              entity_id=vendor_id, after={"change_id": change_id, "new_account_last4": account[-4:], "channel": channel},
+              reason=note or "Payments to this vendor are held until someone verifies the change by calling the vendor")
+    _recheck_vendor(conn, vendor_id, user["user_id"], f"Bank change {change_id} requested")
+    return change_id
+
+
 @router.post("/vendors/{vendor_id}/bank-changes", status_code=201)
 def request_bank_change(vendor_id: str, body: dict = Body(...), conn=Depends(get_conn), user=Depends(current_user)):
     """Record a request to change bank details. Nothing changes on the vendor until it's verified by callback."""
@@ -205,21 +228,7 @@ def request_bank_change(vendor_id: str, body: dict = Body(...), conn=Depends(get
     if not (inst.isdigit() and len(inst) == 3 and transit.isdigit() and len(transit) == 5 and account.isdigit()):
         raise HTTPException(422, "Institution is 3 digits, transit 5 digits, account digits only.")
     with conn.transaction():
-        vendor = _vendor(conn, vendor_id)
-        require(conn, user, "vendor.request_bank_change")
-        n = conn.execute("SELECT max(substring(change_id from 4)::int) + 1 AS n FROM bank_change_history").fetchone()["n"]
-        change_id = f"BC-{n:03d}"
-        conn.execute(
-            """INSERT INTO bank_change_history (change_id, vendor_id, changed_at, changed_by_user_id, request_channel,
-                                                verified_by_callback, old_account_last4, new_account_last4,
-                                                new_bank_institution, new_bank_transit, new_bank_account)
-               VALUES (%s, %s, %s, %s, %s, false, %s, %s, %s, %s, %s)""",
-            (change_id, vendor_id, config.TODAY, user["user_id"], channel,
-             (vendor["bank_account"] or "")[-4:] or None, account[-4:], inst, transit, account))
-        audit.log(conn, actor=user["user_id"], action="vendor.bank_change_requested", entity_type="vendor",
-                  entity_id=vendor_id, after={"change_id": change_id, "new_account_last4": account[-4:], "channel": channel},
-                  reason="Payments to this vendor are held until someone verifies the change by calling the vendor")
-        _recheck_vendor(conn, vendor_id, user["user_id"], f"Bank change {change_id} requested")
+        change_id = record_bank_change(conn, vendor_id, user, inst, transit, account, channel)
     return {"change_id": change_id}
 
 

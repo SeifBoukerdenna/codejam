@@ -15,6 +15,7 @@ function tasksFor(user: User | null, t: HomeData["todo"]): Task[] {
   if (!user) return [];
   const all: Record<string, Task> = {
     emails: { count: t.emails_to_sort, label: plural(t.emails_to_sort, "Email to sort", "Emails to sort"), to: "/inbox" },
+    replies: { count: t.replies_to_send, label: plural(t.replies_to_send, "Reply to send", "Replies to send"), to: "/inbox?tab=answer" },
     review: { count: t.needs_review, label: plural(t.needs_review, "Invoice to review", "Invoices to review"), to: "/inbox?tab=review" },
     hold: { count: t.on_hold, label: plural(t.on_hold, "Invoice on hold", "Invoices on hold"), to: "/inbox?tab=hold" },
     approve: { count: t.waiting_for_me, label: plural(t.waiting_for_me, "Invoice to approve", "Invoices to approve"), to: "/approvals" },
@@ -23,7 +24,7 @@ function tasksFor(user: User | null, t: HomeData["todo"]): Task[] {
     held: { count: t.payments_held, label: plural(t.payments_held, "Payment held", "Payments held"), to: "/payments?tab=held" },
   };
   const byRole: Record<string, string[]> = {
-    ap_clerk: ["emails", "review", "hold", "pay", "held"],
+    ap_clerk: ["emails", "replies", "review", "hold", "pay", "held"],
     approver: ["approve"],
     finance_manager: ["approve", "release", "held", "hold"],
     controller_admin: ["approve", "release", "held", "hold"],
@@ -52,6 +53,7 @@ export default function Home() {
   const total = series.at(-1)?.cents ?? 0;
   const change = (shown.at(-1)?.cents ?? 0) - (shown[0]?.cents ?? 0);
   const thisMonth = data.paid_by_month.at(-1);
+  const taxInvoices = new Set(findings.data?.tax_at_risk.map((x) => x.invoice_id)).size;
 
   const rail = (
     <>
@@ -73,16 +75,28 @@ export default function Home() {
           )}
         </Panel>
       )}
-      {findings.data && findings.data.overpaid_cad_cents > 0 && (
-        <Link to="/activity" className="panel" style={{ display: "block" }}>
-          <div className="hero-label">Paid twice this year</div>
-          <div style={{ fontSize: 28, fontWeight: 650, letterSpacing: "-0.03em" }} className="num">
-            {money(findings.data.overpaid_cad_cents)}
+      {findings.data && (findings.data.overpaid_cad_cents > 0 || findings.data.tax_at_risk_cents > 0) && (
+        <Panel title="Money to get back">
+          <div className="list">
+            <Link to="/activity?tab=paid_twice" className="row">
+              <div className="row-main">
+                <div className="row-title">Paid twice</div>
+                <div className="row-sub">{findings.data.to_recover_count
+                  ? `${findings.data.to_recover_count} still to recover` : "All recovered"}</div>
+              </div>
+              <span className="row-amount">{money(findings.data.to_recover_cad_cents)}</span>
+              <RightOutlined style={{ fontSize: 11, color: "var(--ink-3)" }} />
+            </Link>
+            <Link to="/activity?tab=tax" className="row">
+              <div className="row-main">
+                <div className="row-title">Tax we can't claim back</div>
+                <div className="row-sub">{taxInvoices} {plural(taxInvoices, "invoice", "invoices")} to fix</div>
+              </div>
+              <span className="row-amount">{money(findings.data.tax_at_risk_cents)}</span>
+              <RightOutlined style={{ fontSize: 11, color: "var(--ink-3)" }} />
+            </Link>
           </div>
-          <div className="small muted" style={{ marginTop: 4 }}>
-            {findings.data.double_payments.filter((f) => f.kind !== "about_to_pay_twice").length} double payments to recover <RightOutlined style={{ fontSize: 10 }} />
-          </div>
-        </Link>
+        </Panel>
       )}
       <Panel title={thisMonth ? `${monthName(thisMonth.month, true)} so far` : "This month"}>
         <div className="panel-stat"><span>Paid out</span><span>{money(thisMonth?.total_cad_cents ?? 0)}</span></div>

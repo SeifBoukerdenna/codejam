@@ -169,8 +169,11 @@ CREATE TABLE emails (
     attachments     TEXT[] NOT NULL,
     -- app columns, filled by intake
     classification  TEXT,                           -- invoice / statement / newsletter / payment_inquiry / missing_attachment
-    intake_status   TEXT NOT NULL DEFAULT 'unprocessed',
+    intake_status   TEXT NOT NULL DEFAULT 'unprocessed' CHECK (intake_status IN ('unprocessed', 'processed', 'answered')),
     intake_note     TEXT,
+    reply_draft     TEXT,                           -- a ready-to-send answer, built from our own records
+    answered_by     TEXT REFERENCES users,
+    answered_at     TIMESTAMPTZ,
     processed_at    TIMESTAMPTZ
 );
 
@@ -357,6 +360,20 @@ CREATE TABLE card_transactions (
     source               TEXT NOT NULL CHECK (source IN ('employee_card', 'ap_virtual_card')),
     receipt_attached     BOOLEAN NOT NULL,
     memo                 TEXT
+);
+
+-- Money paid twice that we're getting back from the vendor. One row per double payment found by
+-- findings.double_payments(); `recovery_key` is its payment ids joined, so it stays stable across reloads.
+CREATE TABLE recoveries (
+    recovery_key   TEXT PRIMARY KEY,
+    vendor_id      TEXT REFERENCES vendors,
+    amount_cents   BIGINT NOT NULL,
+    status         TEXT NOT NULL CHECK (status IN ('requested', 'recovered')),
+    requested_by   TEXT REFERENCES users,
+    requested_at   TIMESTAMPTZ,
+    recovered_by   TEXT REFERENCES users,
+    recovered_at   TIMESTAMPTZ,
+    note           TEXT
 );
 
 -- ───────────────────────────── Audit trail ─────────────────────────────

@@ -38,7 +38,13 @@ No `make`? Each target is one `docker compose` command; see the [Makefile](Makef
 2. Open an invoice: the checks explain themselves in plain words, *What we read* shows confidence per field.
 3. Switch user (top right) to the approver named on the invoice → **Approve**. Then Jordan → **Pay**.
 4. Try to release as the person who approved it: refused, with the reason (P11). Release as the controller (U002).
-5. **Activity → Audit findings**: $23,601.92 paid twice this year, self-approvals, split invoices.
+5. **Activity → Paid twice**: $23,601.92 paid twice this year. Open one: the refund request is written from the
+   payment records; mark it requested, then recovered. **Tax at risk** shows the tax we couldn't claim back.
+6. **Inbox → To answer**: the "where's my payment?" email (EM-057) has a reply drafted from PAY-00047. Copy it or
+   open it in your mail app, then **Mark as answered**.
+7. **Try to fool us**: click any trick (bank account swap, look-alike vendor, reused number, wrong tax…). A fake PDF
+   goes through the same worker and checks as a real invoice, and the card says what caught it. Judges can download
+   a clean invoice from the right panel, edit it, and upload it.
 
 `make reseed` puts everything back to the start.
 

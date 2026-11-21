@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { send, type Email, type InvoiceRow } from "../api";
 import { useRunner } from "../components/actions";
-import { Avatar, Chips, Empty, Loading, Notice, Page, PageTitle, Panel, Pill, Row, Section, Stat } from "../components/ui";
-import { INVOICE_STATUS, dateTime, money, plural, senderName, shortDate, statusOf, type Tone } from "../format";
+import { Avatar, Check, Chips, Draft, Empty, Loading, Notice, Page, PageTitle, Panel, Pill, Row, Section, Stat } from "../components/ui";
+import { INVOICE_STATUS, dateTime, instant, money, plural, senderName, shortDate, statusOf, type Tone } from "../format";
 import { useApi, useSession } from "../session";
 
 // The AP clerk's workspace: what came in, what the system made of it, and what needs a person.
@@ -20,7 +20,7 @@ const KIND: Record<string, { label: string; tone: Tone }> = {
 };
 
 type Queue = { counts: Record<string, number>; failed: { job_id: number; filename: string; error: string }[] };
-type Tab = "review" | "hold" | "emails";
+type Tab = "review" | "hold" | "answer" | "emails";
 
 export default function Inbox() {
   const { today, user } = useSession();
@@ -46,6 +46,7 @@ export default function Inbox() {
   const unsorted = emails.data.filter((e) => e.intake_status === "unprocessed").length;
   const review = work.data.filter((i) => i.status === "needs_review");
   const held = work.data.filter((i) => i.status === "on_hold");
+  const toAnswer = emails.data.filter((e) => e.has_reply && e.intake_status === "processed");
   const canWork = user && ["ap_clerk", "finance_manager", "controller_admin"].includes(user.role) && user.status === "active";
   const refresh = () => { emails.reload(); work.reload(); queue.reload(); };
   const byKind = emails.data.reduce<Record<string, number>>((acc, e) => {
@@ -63,6 +64,25 @@ export default function Inbox() {
         end={<><span className="row-amount">{money(i.total_cents, i.currency)}</span><Pill tone={s.tone}>{s.label}</Pill></>} />
     );
   };
+
+  const emailRow = (e: Email) => {
+    const kind = e.classification ? KIND[e.classification] : null;
+    const made = e.invoices ?? [];
+    // Badges only where they change what you'd do: a reply waiting to go out, or one that went.
+    const badge = e.intake_status === "answered" ? <Pill tone="positive">Answered</Pill>
+      : e.has_reply ? <Pill tone="warning">Reply ready</Pill>
+        : kind ? <Pill tone={kind.tone}>{made.length > 1 ? `${made.length} invoices` : kind.label}</Pill>
+          : e.attachments.length ? <span className="small muted"><PaperClipOutlined /> {e.attachments.length}</span>
+            : <Pill tone="warning">No attachment</Pill>;
+    return (
+      <Row key={e.email_id} onClick={() => setOpenId(e.email_id)}
+        avatar={<Avatar name={senderName(e.from_name, e.from_address)} />}
+        title={senderName(e.from_name, e.from_address)}
+        sub={e.intake_note && e.classification !== "invoice" ? e.intake_note : e.subject}
+        end={<><span className="small muted">{dateTime(e.received_at, today)}</span>{badge}</>} />
+    );
+  };
+
 
   const rail = (
     <>
@@ -122,43 +142,30 @@ export default function Inbox() {
         <Chips<Tab> value={tab} onChange={(v) => setParams({ tab: v })} options={[
           { value: "review", label: "To review", count: review.length },
           { value: "hold", label: "On hold", count: held.length },
+          ...(emails.data.some((e) => e.has_reply) ? [{ value: "answer" as Tab, label: "To answer", count: toAnswer.length }] : []),
           { value: "emails", label: "Emails", count: emails.data.length },
         ]} />
       </div>
 
-      <Section title={tab === "review" ? "To review" : tab === "hold" ? "On hold" : "Emails"} first>
+      <Section title={{ review: "To review", hold: "On hold", answer: "To answer", emails: "Emails" }[tab]} first>
         {tab === "review" && (review.length ? <div className="list">{review.map(invoiceRow)}</div>
           : <Empty title="Nothing to review">{unsorted ? "Sort the inbox to bring new invoices in." : undefined}</Empty>)}
         {tab === "hold" && (held.length ? <div className="list">{held.map(invoiceRow)}</div> : <Empty title="Nothing on hold" />)}
-        {tab === "emails" && (
-          <div className="list">
-            {emails.data.map((e) => {
-              const kind = e.classification ? KIND[e.classification] : null;
-              const made = e.invoices ?? [];
-              return (
-                <Row key={e.email_id} onClick={() => setOpenId(e.email_id)}
-                  avatar={<Avatar name={senderName(e.from_name, e.from_address)} />}
-                  title={senderName(e.from_name, e.from_address)}
-                  sub={e.intake_note && e.classification !== "invoice" ? e.intake_note : e.subject}
-                  end={<>
-                    <span className="small muted">{dateTime(e.received_at, today)}</span>
-                    {kind ? <Pill tone={kind.tone}>{made.length > 1 ? `${made.length} invoices` : kind.label}</Pill>
-                      : e.attachments.length ? <span className="small muted"><PaperClipOutlined /> {e.attachments.length}</span>
-                        : <Pill tone="warning">No attachment</Pill>}
-                  </>} />
-              );
-            })}
-          </div>
-        )}
+        {tab === "answer" && (toAnswer.length ? <div className="list">{toAnswer.map(emailRow)}</div>
+          : <Empty title="Nothing to answer" />)}
+        {tab === "emails" && <div className="list">{emails.data.map(emailRow)}</div>}
       </Section>
-      <EmailDrawer emailId={openId} onClose={() => setOpenId(null)} />
+      <EmailDrawer emailId={openId} onClose={() => setOpenId(null)} canWork={!!canWork} onChanged={refresh} />
     </Page>
   );
 }
 
-function EmailDrawer({ emailId, onClose }: { emailId: string | null; onClose: () => void }) {
+function EmailDrawer({ emailId, onClose, canWork, onChanged }: {
+  emailId: string | null; onClose: () => void; canWork: boolean; onChanged: () => void;
+}) {
   const { today } = useSession();
-  const { data } = useApi<Email>(emailId ? `/emails/${emailId}` : null);
+  const run = useRunner();
+  const { data, reload } = useApi<Email>(emailId ? `/emails/${emailId}` : null);
   const { data: list } = useApi<Email[]>(emailId ? "/emails" : null);
   const email = data && data.email_id === emailId ? data : null;
   const made = list?.find((e) => e.email_id === emailId)?.invoices ?? [];
@@ -175,7 +182,26 @@ function EmailDrawer({ emailId, onClose }: { emailId: string | null; onClose: ()
               <div style={{ marginTop: 8, fontSize: 14.5 }}>{email.intake_note}</div>
             </div>
           )}
-          <div className="email-body">{email.body}</div>
+          {email.reply_draft && (
+            <Section title={email.intake_status === "answered" ? "Reply sent" : "Reply ready to send"}>
+              <Draft text={email.reply_draft} to={email.from_address} subject={`Re: ${email.subject}`}
+                actions={canWork && email.intake_status !== "answered" && (
+                  <Button type="primary" shape="round"
+                    onClick={() => run(() => send("POST", `/emails/${email.email_id}/answered`), "Marked as answered",
+                      () => { reload(); onChanged(); })}>
+                    Mark as answered
+                  </Button>
+                )} />
+              {email.intake_status === "answered" && (
+                <Check tone="positive" meta={email.answered_at ? instant(email.answered_at) : undefined}>
+                  Answered by {email.answered_by_name ?? "AP"}
+                </Check>
+              )}
+            </Section>
+          )}
+          <Section title="Their email">
+            <div className="email-body" style={{ marginTop: 0 }}>{email.body}</div>
+          </Section>
           {made.length > 0 && (
             <Section title="Invoices from this email">
               <div className="list">

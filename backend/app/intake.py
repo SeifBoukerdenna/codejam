@@ -7,6 +7,9 @@ Sorting is keyword rules, checked in this order (first match wins):
   "where is payment" / status     -> payment question: answered from our payment records
   says "attached" but nothing is  -> missing attachment: ask the sender to resend
   anything else                   -> other: left for a person
+
+For payment questions and missing attachments we also write a ready-to-send reply. It's built from our own
+records with plain string templates (no AI), so every fact in it can be traced to a payment or invoice row.
 """
 
 import hashlib
@@ -26,6 +29,15 @@ RULES = [
 ]
 NEWSLETTER_SENDERS = re.compile(r"^(news|newsletter|marketing|promo|no-?reply)@", re.I)
 INVOICE_REF_RE = re.compile(r"invoice\s*#?\s*([A-Z0-9][A-Z0-9\-]*\d)", re.I)
+METHOD_WORDS = {"EFT": "Bank transfer (EFT)", "CHEQUE": "Cheque", "CARD": "Virtual card"}
+SIGNATURE = "Accounts Payable · Harborline Logistics\nap@harborline-logistics.example"
+
+NOTES = {
+    "statement": "Statement of account. Filed for reference; no invoice created.",
+    "newsletter": "Marketing email. Ignored.",
+    "missing_attachment": "Says an invoice is attached, but nothing is. A reply asking to resend it is ready.",
+    "other": "Not an invoice. Left for a person to read.",
+}
 
 
 def classify(email: dict) -> str:
@@ -40,39 +52,69 @@ def classify(email: dict) -> str:
     return "other"
 
 
-def answer_payment_question(conn, email: dict) -> str:
-    """Look up the invoice the vendor is asking about and say what happened to it."""
+def _greeting(conn, email: dict) -> str:
+    vendor = conn.execute("SELECT legal_name FROM vendors WHERE lower(ap_contact_email) = lower(%s) ORDER BY vendor_id LIMIT 1",
+                          (email["from_address"],)).fetchone()
+    if vendor:
+        return f"Hi {vendor['legal_name']} team,"
+    name = re.sub(r"\s+(Accounts Receivable|AR|Billing)$", "", email["from_name"] or "", flags=re.I).strip()
+    return f"Hi {name}," if name else "Hello,"
+
+
+def _sign(signer: str) -> str:
+    return f"Best regards,\n{signer}\n{SIGNATURE}"
+
+
+def answer_payment_question(conn, email: dict, signer: str) -> tuple[str, str]:
+    """Look up the invoice the vendor asks about. Returns (note for AP, reply to send the vendor)."""
+    hello = _greeting(conn, email)
     ref = INVOICE_REF_RE.search(f"{email['subject']} {email['body']}")
     if not ref:
-        return "Asks about a payment but names no invoice number. Reply asking which invoice."
+        return ("Asks about a payment but names no invoice number. A reply asking which invoice is ready.",
+                f"{hello}\n\nThanks for your message. Could you tell us which invoice number you're asking about? "
+                f"We'll check its status right away.\n\n{_sign(signer)}")
     number = ref.group(1)
     vendor = conn.execute("SELECT * FROM vendors WHERE lower(ap_contact_email) = lower(%s) ORDER BY vendor_id LIMIT 1",
                           (email["from_address"],)).fetchone()
-    candidates = conn.execute(
-        "SELECT * FROM invoices WHERE vendor_id = %s AND NOT is_credit_note", (vendor["vendor_id"] if vendor else None,)
-    ).fetchall()
+    candidates = conn.execute("SELECT * FROM invoices WHERE vendor_id = %s AND NOT is_credit_note",
+                              (vendor["vendor_id"] if vendor else None,)).fetchall()
     invoice = next((i for i in candidates
                     if normalize_invoice_number(i["vendor_invoice_number"]) == normalize_invoice_number(number)), None)
     if not invoice:
-        return f"Asks about invoice {number}, which we have no record of. Ask the vendor to send it."
-    pay = conn.execute(
-        "SELECT * FROM payments WHERE invoice_id = %s AND status <> 'cancelled' ORDER BY payment_id DESC LIMIT 1",
-        (invoice["invoice_id"],)).fetchone()
-    if pay and pay["status"] == "settled":
-        return (f"Invoice {number} ({invoice['invoice_id']}) was already paid: {pay['payment_id']}, "
-                f"{pay['method']}, {fmt(pay['amount_cents'], pay['currency'])}, settled {pay['paid_date']:%B %-d, %Y} "
-                f"(ref {pay['reference']}). Reply with these details.")
+        return (f"Asks about invoice {number}, which we have no record of. A reply asking for a copy is ready.",
+                f"{hello}\n\nThanks for checking in. We don't have invoice {number} on file. Could you send us a copy "
+                f"at ap@harborline-logistics.example? We'll process it as soon as it arrives.\n\n{_sign(signer)}")
+
+    pay = conn.execute("SELECT * FROM payments WHERE invoice_id = %s AND status <> 'cancelled' ORDER BY payment_id DESC LIMIT 1",
+                       (invoice["invoice_id"],)).fetchone()
+    if pay and pay["status"] in ("settled", "outstanding"):
+        when = f"{pay['paid_date']:%B %-d, %Y}"
+        note = (f"Invoice {number} ({invoice['invoice_id']}) was already paid: {pay['payment_id']}, {pay['method']}, "
+                f"{fmt(pay['amount_cents'], pay['currency'])}, settled {when} (ref {pay['reference']}). A reply is ready.")
+        cashed = "" if pay["status"] == "settled" else " The cheque hasn't been cashed yet on our side."
+        reply = (f"{hello}\n\nThanks for checking in. Invoice {number} was paid in full on {when}.{cashed}\n\n"
+                 f"Amount: {fmt(pay['amount_cents'], pay['currency'])}\n"
+                 f"Method: {METHOD_WORDS.get(pay['method'], pay['method'])}\n"
+                 f"Reference: {pay['reference']}\n\n"
+                 f"If you can't find it on your side, reply with your remittance details and we'll trace it with "
+                 f"our bank.\n\n{_sign(signer)}")
+        return note, reply
     if pay:
-        return f"Invoice {number} ({invoice['invoice_id']}) has payment {pay['payment_id']} ({pay['status']})."
-    return f"Invoice {number} ({invoice['invoice_id']}) isn't paid yet; status: {invoice['status'].replace('_', ' ')}."
+        when = f"{pay['scheduled_date']:%B %-d, %Y}" if pay["scheduled_date"] else "shortly"
+        return (f"Invoice {number} ({invoice['invoice_id']}) has payment {pay['payment_id']} ({pay['status']}). A reply is ready.",
+                f"{hello}\n\nThanks for checking in. Invoice {number} is approved and its payment of "
+                f"{fmt(pay['amount_cents'], pay['currency'])} is scheduled for {when} by "
+                f"{METHOD_WORDS.get(pay['method'], pay['method']).lower()}.\n\n{_sign(signer)}")
+    due = f" It's due on {invoice['due_date']:%B %-d, %Y}." if invoice["due_date"] else ""
+    return (f"Invoice {number} ({invoice['invoice_id']}) isn't paid yet; status: {invoice['status'].replace('_', ' ')}. "
+            f"A reply is ready.",
+            f"{hello}\n\nThanks for checking in. We have invoice {number} and it's going through our approval "
+            f"process.{due} We'll pay it on time.\n\n{_sign(signer)}")
 
 
-NOTES = {
-    "statement": "Statement of account. Filed for reference; no invoice created.",
-    "newsletter": "Marketing email. Ignored.",
-    "missing_attachment": "Says an invoice is attached, but nothing is. Reply asking the sender to resend it.",
-    "other": "Not an invoice. Left for a person to read.",
-}
+def missing_attachment_reply(conn, email: dict, signer: str) -> str:
+    return (f"{_greeting(conn, email)}\n\nThanks for your email. It mentions an invoice, but nothing was attached on "
+            f"our side. Could you send it again as a PDF?\n\n{_sign(signer)}")
 
 
 def store_document(conn, *, filename: str, content: bytes, source: str, email_id: str | None = None,
@@ -95,9 +137,11 @@ def store_document(conn, *, filename: str, content: bytes, source: str, email_id
 
 
 def process_inbox(conn, actor: str) -> dict:
+    signer = conn.execute("SELECT full_name FROM users WHERE user_id = %s", (actor,)).fetchone()["full_name"]
     counts: dict[str, int] = {}
     for email in conn.execute("SELECT * FROM emails WHERE intake_status = 'unprocessed' ORDER BY received_at").fetchall():
         kind = classify(email)
+        reply = None
         if kind == "invoice":
             queued = 0
             for name in email["attachments"]:
@@ -109,13 +153,15 @@ def process_inbox(conn, actor: str) -> dict:
                 queued += new
             note = f"{queued} invoice document{'s' if queued != 1 else ''} queued for reading."
         elif kind == "payment_inquiry":
-            note = answer_payment_question(conn, email)
+            note, reply = answer_payment_question(conn, email, signer)
+        elif kind == "missing_attachment":
+            note, reply = NOTES[kind], missing_attachment_reply(conn, email, signer)
         else:
             note = NOTES[kind]
         conn.execute(
-            """UPDATE emails SET classification = %s, intake_status = 'processed', intake_note = %s, processed_at = now()
-               WHERE email_id = %s""", (kind, note, email["email_id"]))
+            """UPDATE emails SET classification = %s, intake_status = 'processed', intake_note = %s, reply_draft = %s,
+                      processed_at = now() WHERE email_id = %s""", (kind, note, reply, email["email_id"]))
         audit.log(conn, actor=actor, action="email.sorted", entity_type="email", entity_id=email["email_id"],
-                  after={"classification": kind}, reason=note)
+                  after={"classification": kind, "reply_drafted": reply is not None}, reason=note)
         counts[kind] = counts.get(kind, 0) + 1
     return counts

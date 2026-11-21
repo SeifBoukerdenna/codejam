@@ -20,6 +20,14 @@ class CheckResult:
         return asdict(self)
 
 
+# Messages are shown as-is, so another invoice's status is written in words, never as its code.
+STATUS_WORDS = {
+    "extracting": "still being read", "needs_review": "waiting for review", "on_hold": "on hold",
+    "pending_approval": "already waiting for approval", "approved": "already approved",
+    "scheduled": "payment already scheduled", "paid": "already paid", "rejected": "rejected",
+}
+
+
 def block(code: str, message: str, **details) -> CheckResult:
     return CheckResult(code, "block", message, details)
 

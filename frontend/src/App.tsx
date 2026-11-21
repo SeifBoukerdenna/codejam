@@ -3,6 +3,7 @@ import AppShell from "./components/AppShell";
 import { Empty, Page } from "./components/ui";
 import Activity from "./pages/Activity";
 import Approvals from "./pages/Approvals";
+import Fool from "./pages/Fool";
 import Home from "./pages/Home";
 import Inbox from "./pages/Inbox";
 import InvoiceDetail from "./pages/InvoiceDetail";
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="vendors/:vendorId" element={<VendorDetail />} />
             <Route path="invoices/:invoiceId" element={<InvoiceDetail />} />
             <Route path="activity" element={<Activity />} />
+            <Route path="fool" element={<Fool />} />
             <Route path="*" element={<Page><Empty title="Page not found">Check the address, or go back home.</Empty></Page>} />
           </Route>
         </Routes>

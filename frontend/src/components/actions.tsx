@@ -1,6 +1,9 @@
 import { App, Input, Modal } from "antd";
 import { useState } from "react";
 
+/** Fired after any successful action, so the sidebar's work counts update without a page change. */
+export const CHANGED = "harborline:changed";
+
 /** Run an action against the API: success toast, or the server's own reason when it refuses
  *  ("You approved this invoice, so you can't release its payment (P11)"). Always refreshes after. */
 export function useRunner() {
@@ -9,6 +12,7 @@ export function useRunner() {
     try {
       await action();
       message.success(success);
+      window.dispatchEvent(new Event(CHANGED));
       return true;
     } catch (e) {
       message.error({ content: (e as Error).message, duration: 6 });

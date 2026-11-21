@@ -12,7 +12,7 @@ re-sent invoice is caught by its number instead, and the message says it was pai
 
 import re
 
-from app.checks import CheckResult, block, warn
+from app.checks import STATUS_WORDS, CheckResult, block, warn
 from app.money import fmt
 from app.vendor_match import normalize_name
 
@@ -28,8 +28,7 @@ def normalize_invoice_number(number: str | None) -> str:
 
 
 def _describe(other: dict) -> str:
-    status = {"paid": "already paid", "scheduled": "payment already scheduled", "approved": "already approved",
-              "pending_approval": "already waiting for approval"}.get(other["status"], f"status {other['status']}")
+    status = STATUS_WORDS.get(other["status"], other["status"].replace("_", " "))
     return f"{other['invoice_id']} (#{other['vendor_invoice_number']}, {fmt(other['total_cents'], other['currency'])}, {status})"
 
 

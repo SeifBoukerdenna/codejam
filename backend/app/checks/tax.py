@@ -59,24 +59,28 @@ def check_tax(ctx) -> list[CheckResult]:
         results.append(block("WRONG_TAX_FOR_PROVINCE",
                              f"Charged 13% HST ({fmt(charged['HST13']['amount_cents'], cur)}), but {why}. "
                              f"The correct GST is {fmt(amount_for('GST5'), cur)}.",
-                             overcharged_cents=charged["HST13"]["amount_cents"] - amount_for("GST5")))
+                             overcharged_cents=charged["HST13"]["amount_cents"] - amount_for("GST5"),
+                             at_risk_cents=charged["HST13"]["amount_cents"] - amount_for("GST5"),
+                             fix="Ask for a corrected invoice with 5% GST"))
         extra.discard("HST13")
         missing.discard("GST5")
     if "PST7_BC" in extra and inv["ship_to_province"] == "BC":
         results.append(block("PST_ON_SERVICES",
                              f"Charged 7% BC PST ({fmt(charged['PST7_BC']['amount_cents'], cur)}) on services. "
                              f"In BC, PST applies to goods only. PST is also not recoverable, so this is a real cost.",
-                             overcharged_cents=charged["PST7_BC"]["amount_cents"]))
+                             overcharged_cents=charged["PST7_BC"]["amount_cents"],
+                             at_risk_cents=charged["PST7_BC"]["amount_cents"],
+                             fix="Ask for a corrected invoice without PST"))
         extra.discard("PST7_BC")
     for code in sorted(missing):
         results.append(block("TAX_MISSING",
                              f"No {codes[code]['description']} was charged, but {why}. Expected "
-                             f"{fmt(amount_for(code), cur)}. Ask the vendor for a corrected invoice; paying a wrong tax "
-                             f"invoice means losing the input tax credit.", tax_code=code, expected_cents=amount_for(code)))
+                             f"{fmt(amount_for(code), cur)}. Ask the vendor for a corrected invoice before paying it.", tax_code=code, expected_cents=amount_for(code)))
     for code in sorted(extra):
         results.append(block("UNEXPECTED_TAX",
                              f"Charged {codes[code]['description']} ({fmt(charged[code]['amount_cents'], cur)}), "
-                             f"but {why}.", tax_code=code))
+                             f"but {why}.", tax_code=code, at_risk_cents=charged[code]["amount_cents"],
+                             fix="Ask for a corrected invoice without this tax"))
     for tax in unknown:
         results.append(warn("TAX_RATE_UNUSUAL",
                             f"Charged {tax['label']} at {tax['rate_pct']}%, which isn't a rate we use. Check it."))

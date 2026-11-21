@@ -311,3 +311,19 @@ inline styles.
 - **Credit notes** need the normal approval (department manager), then are deducted automatically, oldest first,
   from the next payment to that vendor in the same currency. Stopping that payment makes the credit available again.
 - **Requester suggestion skips people who've left** (U015 is terminated).
+- **Tax at risk** = tax we'd pay and can't claim back: HST charged above the correct GST, BC PST on services (never
+  recoverable), a tax that doesn't apply, GST/HST without the vendor's GST number, QST without a QST number (Revenu
+  Québec needs it). Tax *missing* from an invoice isn't counted: nothing was paid. Invoices we won't pay anyway
+  (rejected, duplicates, paid by card) are left out. Each check stores `at_risk_cents` and the fix.
+- **QST charged with no QST number** (printed or on file) is a warning. The dataset's BC/MB vendors bill QC
+  deliveries this way; all 5 were already held or in review for other reasons, so no routing changes.
+- **Replies are drafted, never sent.** The app writes the answer from our records (payment, invoice, status) with
+  string templates; AP sends it from their own mailbox and clicks *Mark as answered* (audited, with who and when).
+- **Getting double payments back:** each double payment already made is *to recover* → *refund requested* →
+  *recovered*, keyed by its payment ids. Scheduled-twice payments aren't recoveries: you stop one on Payments.
+- **Try to fool us** builds fake PDFs from real vendor master data (a 40-line hand-written PDF, no library) and
+  drops them into the normal queue. The page never decides "caught" itself: a fake counts as caught if any block or
+  warning fired, or it's on hold, in review or rejected. Every upload counts as an attempt; the split trick's two
+  invoices count once. Vendor ids are hard-coded only there (`app/demo/`), as a demo script.
+- **A file we can't read** (blank image, damaged PDF) fails with a plain sentence and isn't retried; other worker
+  errors are retried up to 3 times.

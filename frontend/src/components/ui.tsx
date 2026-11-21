@@ -1,5 +1,6 @@
-import { CheckOutlined, CloseOutlined, ExclamationCircleFilled, ExclamationOutlined, InfoCircleFilled,
-  MinusOutlined, StopFilled, CheckCircleFilled, InboxOutlined } from "@ant-design/icons";
+import { CheckOutlined, CloseOutlined, CopyOutlined, ExclamationCircleFilled, ExclamationOutlined, InfoCircleFilled,
+  MailOutlined, MinusOutlined, StopFilled, CheckCircleFilled, InboxOutlined } from "@ant-design/icons";
+import { App, Button } from "antd";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { initials, type Tone } from "../format";
@@ -161,6 +162,51 @@ export function Chips<T extends string>({ value, onChange, options }: {
           {o.label}{o.count !== undefined && <span className="chip-n">{o.count}</span>}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Small cards in a 2-column grid (1 on phones), for a set of choices that each lead somewhere. */
+export function Cards({ children }: { children: ReactNode }) {
+  return <div className="cards">{children}</div>;
+}
+
+export function Card({ title, children, foot }: { title: ReactNode; children?: ReactNode; foot?: ReactNode }) {
+  return (
+    <div className="card">
+      <div className="card-title">{title}</div>
+      {children && <div className="card-body">{children}</div>}
+      {foot && <div className="card-foot">{foot}</div>}
+    </div>
+  );
+}
+
+async function copyText(text: string) {
+  // navigator.clipboard only exists on https/localhost; the fallback covers a phone on the LAN (http://192.168…).
+  if (navigator.clipboard) return navigator.clipboard.writeText(text);
+  const area = Object.assign(document.createElement("textarea"), { value: text });
+  document.body.append(area);
+  area.select();
+  document.execCommand("copy");
+  area.remove();
+}
+
+/** A message we wrote for a person to send, shown exactly as it will read. We never send it ourselves:
+ *  AP sends it from their own mailbox, so the vendor gets a reply from a person they know. */
+export function Draft({ text, to, subject, actions }: { text: string; to?: string; subject?: string; actions?: ReactNode }) {
+  const { message } = App.useApp();
+  const mailto = to && `mailto:${to}?subject=${encodeURIComponent(subject ?? "")}&body=${encodeURIComponent(text)}`;
+  return (
+    <div className="draft">
+      {to && <div className="draft-field"><span>To</span>{to}</div>}
+      {subject && <div className="draft-field"><span>Subject</span>{subject}</div>}
+      <div className="draft-body">{text}</div>
+      <div className="draft-actions">
+        <Button className="soft" shape="round" icon={<CopyOutlined />}
+          onClick={() => copyText(text).then(() => message.success("Copied"), () => message.error("Couldn't copy"))}>Copy</Button>
+        {mailto && <Button className="soft" shape="round" icon={<MailOutlined />} href={mailto}>Open in mail app</Button>}
+        {actions}
+      </div>
     </div>
   );
 }

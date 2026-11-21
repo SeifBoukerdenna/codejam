@@ -14,6 +14,7 @@ import socket
 import time
 
 from app import audit, db
+from app.extraction.text import Unreadable
 from app.pipeline import process_document
 
 MAX_ATTEMPTS = 3
@@ -37,10 +38,14 @@ def run_job(url: str | None, job: dict) -> None:
                          (job["job_id"],))
         print(f"job {job['job_id']}: document {job['document_id']} -> {invoice_id}", flush=True)
     except Exception as exc:  # noqa: BLE001 - any failure goes back on the queue, with the reason recorded
-        status = "failed" if job["attempts"] >= MAX_ATTEMPTS else "queued"
+        # A file that can't be read fails the same way every time, so it isn't retried. Anything else
+        # (database blip, worker killed) goes back on the queue up to MAX_ATTEMPTS times.
+        unreadable = isinstance(exc, Unreadable)
+        status = "failed" if unreadable or job["attempts"] >= MAX_ATTEMPTS else "queued"
+        error = str(exc) if unreadable else f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
         with db.transaction(url) as conn:
             conn.execute("UPDATE extraction_jobs SET status = %s, error = %s, finished_at = now() WHERE job_id = %s",
-                         (status, f"{type(exc).__name__}: {str(exc).splitlines()[0]}", job["job_id"]))
+                         (status, error, job["job_id"]))
             audit.log(conn, actor=None, action="document.read_failed", entity_type="document",
                       entity_id=str(job["document_id"]), reason=f"{type(exc).__name__}: {exc} (attempt {job['attempts']})")
         print(f"job {job['job_id']} failed ({status}): {str(exc).splitlines()[0]}", flush=True)

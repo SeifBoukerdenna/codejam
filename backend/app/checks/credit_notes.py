@@ -1,7 +1,7 @@
 """Credit notes are money the vendor owes us. They are never paid out; once approved they are deducted from
 the next payment to that vendor (see workflow/payments.py)."""
 
-from app.checks import CheckResult, info
+from app.checks import STATUS_WORDS, CheckResult, info
 from app.checks.duplicates import normalize_invoice_number
 from app.money import fmt
 
@@ -25,8 +25,8 @@ def check_credit_note(ctx) -> list[CheckResult]:
         match = next((o for o in originals if o["total_cents"] == -(inv["total_cents"] or 0)), None)
         if match:
             results.append(info("CREDIT_NOTE_REVERSES", f"It exactly reverses invoice #{match['vendor_invoice_number']} "
-                                f"({match['invoice_id']}, {match['status']}).", original=match["invoice_id"]))
+                                f"({match['invoice_id']}, {STATUS_WORDS.get(match['status'], match['status'])}).", original=match["invoice_id"]))
     else:
         results.append(info("CREDIT_NOTE_REVERSES", f"It refers to invoice #{match['vendor_invoice_number']} "
-                            f"({match['invoice_id']}, {match['status']}).", original=match["invoice_id"]))
+                            f"({match['invoice_id']}, {STATUS_WORDS.get(match['status'], match['status'])}).", original=match["invoice_id"]))
     return results
