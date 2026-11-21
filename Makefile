@@ -1,6 +1,6 @@
 .PHONY: up down reseed test traps psql
 
-up:      ## Start db + api + web. UI on http://localhost:5173, API on http://localhost:8000/docs
+up:      ## Start db + api + worker + web. UI on http://localhost:5173, API on http://localhost:8000/docs
 	docker compose up --build
 
 down:    ## Stop everything (data is kept in the pgdata volume)
@@ -12,8 +12,8 @@ reseed:  ## Wipe the database and reload the dataset from the CSVs
 test:    ## All backend tests (they use their own ap_test database)
 	docker compose run --rm api pytest
 
-traps:   ## Trap checklist from TRAP_MAP.md: caught / missed (step 4)
-	docker compose run --rm api pytest tests/test_traps.py -v
+traps:   ## Trap checklist from TRAP_MAP.md: one line per trap, CAUGHT or MISSED
+	docker compose run --rm api pytest tests/test_traps.py -q
 
 psql:    ## SQL prompt on the app database
 	docker compose exec db psql -U ap ap

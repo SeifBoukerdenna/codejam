@@ -34,8 +34,10 @@ ORDER_BY_STATUS = {
 
 @router.get("/payments")
 def list_payments(status: str = "prepared", conn=Depends(get_conn)):
-    order = ORDER_BY_STATUS.get(status, "p.payment_id DESC")
-    rows = conn.execute(f"{PAYMENT_ROWS_SQL} WHERE p.status = %s ORDER BY {order}", (status,)).fetchall()
+    """status may list several, comma-separated ("released,scheduled" = everything on its way out)."""
+    statuses = status.split(",")
+    order = ORDER_BY_STATUS.get(statuses[0], "p.payment_id DESC")
+    rows = conn.execute(f"{PAYMENT_ROWS_SQL} WHERE p.status = ANY(%s) ORDER BY {order}", (statuses,)).fetchall()
     summary = conn.execute(
         """SELECT status, count(*) AS count, sum(amount_cad_cents)::bigint AS total_cad_cents,
                   min(scheduled_date) AS next_date

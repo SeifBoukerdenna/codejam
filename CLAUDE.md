@@ -269,3 +269,38 @@ screen from those pieces; if something is missing, add it there, not as inline s
   AP-00394/AP-00407 double payment is caught there.
 - **Uploaded files are stored in Postgres** (all under 1 MB), so a worker on another machine needs only a
   database connection.
+- **Keystone KE26-1198 is flagged over its PO**, although TRAP_MAP says "within". PO-0046 is $6,803.89; the invoice is
+  $6,185.35 before tax and $6,989.45 with 13% HST. TRAP_MAP's own "over with tax" results for Summit and Alpenglow
+  only hold with tax included, so it can't be consistent either way. We apply tax-included everywhere. Over the PO
+  is a *warning* that adds a finance manager step (P12), not a block.
+- **OCR runs 3 Tesseract passes** (page modes 3, 4, 6) and votes per field, preferring well-formed values. If the
+  passes disagree, the field gets low confidence and the invoice goes to a person, with the readings shown
+  (Prairie: "$5541", "$5541", "55541"). Text-layer PDFs skip OCR entirely.
+- **Confidence is calculated:** text layer 0.99, OCR agreeing 0.90, disagreeing 0.60, malformed 0.40, missing 0.
+  Any field under 0.80 sends the invoice to review.
+- **Touchless:** a brand-new invoice with no blocks, no warnings and no doubtful field goes straight to approval.
+  Anything a person looked at moves on only when they click Submit, which records them as reviewer.
+- **Look-alike vendor** = a vendor whose name is ≥85% similar to one we have *paid*, with a different GST number and
+  bank account. Onboarding dates can't be used: the impostor V052 has an older onboarding date than the real V026.
+  **Duplicate vendor record** = similar name plus the same GST, bank account or email (V053/V002, V051/V001); their
+  invoices are compared together for duplicates.
+- **Duplicate windows:** same vendor + same amount + different number within **14 days** is a warning (30 days
+  flagged every monthly subscription). An employee-card charge from the vendor for the same amount within 30 days
+  means it was already paid by card. Brim virtual-card payments belong to a specific invoice (memo), so a re-sent
+  invoice is caught by its number instead.
+- **Split invoices:** same vendor, within 4 days, each ≤ $10k, together > $10k. Warning, plus a finance manager step.
+- **Stale invoice:** older than 120 days. Warning.
+- **Double payments in the history:** several payments of ONE invoice that add up to its total are instalments,
+  not double payments. Card charges are compared with the invoice total, because AP may have paid less with an
+  early-payment discount (Paper Trail). Result: $23,601.92 overpaid.
+- **A printed account that is the vendor's previous, verified-and-replaced account** is info, not a block: payment
+  always goes to the account on file. An account we've never had on file blocks.
+- **Four-eyes everywhere money or trust changes:** whoever prepared a payment can't release it; whoever onboarded a
+  vendor can't approve it; whoever entered a bank change can't verify it by callback. (Extends P11's idea.)
+- **Bank change rejected by the vendor on callback:** for a change already written to the vendor record (like BC-009),
+  the vendor is put on hold, since the account on file may be a fraudster's.
+- **Payment date:** the due date, or today if already due. **Settlement is a button** ("Record bank confirmation")
+  because there's no real bank. A virtual-card payment also writes a card transaction, like the history does.
+- **Credit notes** need the normal approval (department manager), then are deducted automatically, oldest first,
+  from the next payment to that vendor in the same currency. Stopping that payment makes the credit available again.
+- **Requester suggestion skips people who've left** (U015 is terminated).

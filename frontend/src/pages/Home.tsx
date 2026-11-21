@@ -14,16 +14,18 @@ function tasksFor(user: User | null, todo: HomeData["todo"]): Task[] {
   const t = todo;
   const all: Record<string, Task> = {
     emails: { count: t.emails_to_sort, label: plural(t.emails_to_sort, "email to sort", "emails to sort"), to: "/inbox", tone: "neutral" },
-    review: { count: t.needs_review, label: plural(t.needs_review, "invoice to review", "invoices to review"), to: "/inbox", tone: "warning" },
-    hold: { count: t.on_hold, label: plural(t.on_hold, "invoice on hold", "invoices on hold"), to: "/inbox", tone: "negative" },
+    review: { count: t.needs_review, label: plural(t.needs_review, "invoice to review", "invoices to review"), to: "/inbox?tab=review", tone: "warning" },
+    hold: { count: t.on_hold, label: plural(t.on_hold, "invoice on hold", "invoices on hold"), to: "/inbox?tab=hold", tone: "negative" },
     approve: { count: t.waiting_for_me, label: plural(t.waiting_for_me, "invoice to approve", "invoices to approve"), to: "/approvals", tone: "warning" },
     release: { count: t.payments_to_release, label: plural(t.payments_to_release, "payment to release", "payments to release"), to: "/payments?tab=prepared", tone: "warning" },
+    pay: { count: t.approved_to_pay, label: plural(t.approved_to_pay, "approved invoice to pay", "approved invoices to pay"), to: "/payments?tab=approved", tone: "neutral" },
+    held: { count: t.payments_held, label: plural(t.payments_held, "payment held", "payments held"), to: "/payments?tab=held", tone: "negative" },
   };
   const byRole: Record<string, string[]> = {
-    ap_clerk: ["emails", "review", "hold"],
+    ap_clerk: ["emails", "review", "hold", "pay", "held"],
     approver: ["approve"],
-    finance_manager: ["approve", "release", "hold"],
-    controller_admin: ["approve", "release", "hold"],
+    finance_manager: ["approve", "release", "held", "hold"],
+    controller_admin: ["approve", "release", "held", "hold"],
     employee: [],
     auditor: [],
   };

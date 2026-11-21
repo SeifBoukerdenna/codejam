@@ -49,6 +49,9 @@ services:
     depends_on:
       api:
         condition: service_started    # the api seeds the schema first
+    # On a brand-new database the worker can start before the schema exists, or a reseed can drop it under
+    # the worker's feet; it then exits and Docker simply starts it again.
+    restart: unless-stopped
     command: sh -c "sleep 3 && python -m app.worker"
 
   web:

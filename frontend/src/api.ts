@@ -31,6 +31,17 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** POST/PATCH/upload. Errors come back with the server's reason (e.g. "You approved this invoice, so you
+ *  can't release its payment (P11)"), which the UI shows as-is. */
+export async function send<T = unknown>(method: "POST" | "PATCH", path: string, body?: unknown): Promise<T> {
+  const isFile = body instanceof FormData;
+  return api<T>(path, {
+    method,
+    body: body === undefined ? undefined : isFile ? body : JSON.stringify(body),
+    headers: isFile || body === undefined ? undefined : { "Content-Type": "application/json" },
+  });
+}
+
 // ── response shapes (mirror the SQL in backend/app/routes) ──
 
 export type User = {
@@ -67,7 +78,8 @@ export type HomeData = {
   paid_this_year_cad_cents: number;
   payments_this_year: number;
   paid_by_month: MonthTotal[];
-  todo: Record<"emails_to_sort" | "needs_review" | "on_hold" | "waiting_for_me" | "payments_to_release", number>;
+  todo: Record<"emails_to_sort" | "needs_review" | "on_hold" | "waiting_for_me" | "payments_to_release"
+    | "approved_to_pay" | "payments_held", number>;
   scheduled: { count: number; total_cad_cents: number };
   upcoming: PaymentRow[];
 };
@@ -84,6 +96,7 @@ export type Email = {
   classification: string | null;
   intake_status: string;
   intake_note: string | null;
+  invoices?: { invoice_id: string; status: string; number: string | null }[];
 };
 
 export type Invoice = {
@@ -114,6 +127,9 @@ export type Invoice = {
   source: string;
   is_credit_note: boolean;
   hold_reason: string | null;
+  document_id: number | null;
+  email_id: string | null;
+  reviewed_by_name: string | null;
 };
 
 export type InvoiceLine = {
@@ -134,6 +150,8 @@ export type InvoiceLine = {
 export type Approval = {
   approval_id: string;
   step_no: number;
+  rule_ids: string | null;
+  on_behalf_of_user_id: string | null;
   approver_user_id: string;
   approver_name: string;
   approver_role: string;
@@ -152,6 +170,28 @@ export type CheckResult = {
   severity: "block" | "warn" | "info";
   message: string;
   acknowledged_by: string | null;
+  acknowledged_by_name: string | null;
+};
+
+export type Permission = { allowed: boolean; reason: string } | null;
+
+export type InvoiceActions = {
+  edit: Permission; submit: Permission; recheck: Permission; reject: Permission; approve: Permission;
+  decline: Permission; prepare_payment: Permission; release: Permission; settle: Permission;
+  cancel_payment: Permission; recheck_payment: Permission; payment_id: string | null;
+};
+
+export type FieldConfidence = Record<string, { score: number | null; note: string }>;
+
+export type Extraction = {
+  engine: "text_layer" | "tesseract";
+  fields: Record<string, unknown> & { vendor_name?: string; vendor_gst?: string; bank_institution?: string;
+    bank_transit?: string; bank_account?: string; language?: string; taxes?: { label: string; rate_pct: string }[] };
+  field_confidence: FieldConfidence;
+  filename: string;
+  document_id: number;
+  overall: number;
+  doubtful: string[];
 };
 
 export type AuditEvent = {
@@ -175,6 +215,10 @@ export type InvoiceDetail = {
   payments: Payment[];
   checks: CheckResult[];
   history: AuditEvent[];
+  extraction: Extraction | null;
+  audit_notes: string[];
+  review_reasons: string[];
+  actions: InvoiceActions;
   po: { po_id: string; description: string; total_amount_cents: number } | null;
   contract: { contract_id: string; description: string } | null;
 };
@@ -191,7 +235,38 @@ export type VendorRow = {
   bank_change_unverified: boolean;
 };
 
+export type SimilarVendor = {
+  vendor_id: string; legal_name: string; status: string; kind: "duplicate" | "lookalike"; reasons: string[];
+  payments: number;
+};
+
+export type InvoiceRow = {
+  invoice_id: string; vendor_id: string | null; vendor_name: string | null; vendor_invoice_number: string | null;
+  invoice_date: string | null; status: string; currency: string; total_cents: number | null;
+  total_cad_cents: number | null; hold_reason: string | null; is_credit_note: boolean; source: string;
+};
+
+export type Findings = {
+  self_approvals: { invoice_id: string; approver_user_id: string; full_name: string; acted_at: string;
+    total_cad_cents: number; vendor_name: string }[];
+  double_payments: { kind: "paid_twice" | "about_to_pay_twice" | "paid_by_ap_and_card"; vendor_name: string;
+    invoice_number: string; invoice_ids: string[]; payment_ids: string[]; overpaid_cad_cents: number; message: string }[];
+  overpaid_cad_cents: number;
+  split_invoices: { vendor_name: string; invoice_ids: string[]; combined_cad_cents: number; message: string }[];
+};
+
+export type Reference = {
+  departments: { department_id: string; name: string }[];
+  gl_accounts: { account_number: string; name: string }[];
+  users: { user_id: string; full_name: string; title: string }[];
+  vendors: { vendor_id: string; legal_name: string; status: string }[];
+  categories: string[];
+};
+
 export type VendorDetail = {
+  similar: SimilarVendor[];
+  lookalike_of: SimilarVendor | null;
+  actions: { approve: Permission; hold: Permission; release_hold: Permission; request_bank_change: Permission };
   vendor: VendorRow & {
     address: string | null;
     gst_hst_number: string | null;
@@ -205,6 +280,7 @@ export type VendorDetail = {
     ap_contact_email: string | null;
     requires_po: boolean;
     default_gl_account: string | null;
+    status_reason: string | null;
   };
   paid_this_year: { cents: number; count: number };
   bank_changes: {
@@ -215,6 +291,11 @@ export type VendorDetail = {
     verified_by_callback: boolean;
     old_account_last4: string | null;
     new_account_last4: string | null;
+    pending: boolean;
+    callback_by_name: string | null;
+    callback_phone: string | null;
+    callback_outcome: string | null;
+    verify: Permission;
   }[];
   contracts: {
     contract_id: string;
