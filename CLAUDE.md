@@ -1,0 +1,253 @@
+# Harborline AP — CodeJam 16 (Brim Financial challenge)
+
+This is a web app that takes a supplier invoice from the inbox to a payment: intake → read → code → check → approve → pay. Every step is audited.
+
+The fictional customer is **Harborline Logistics**, a 40-person Canadian logistics company with about 55 vendors and about 50 invoices a month. Payments are **simulated**: no real money and no real bank APIs.
+
+This file is the project brief for anyone working in this repo, human or Claude Code. Read it before writing code.
+
+---
+
+## How we're judged (this decides priorities)
+
+| Weight | Criterion | What it means for us |
+|---|---|---|
+| 40% | Required features working | Cover all 9 roughly before polishing any one. Working beats perfect. |
+| 25% | Technical depth (live Q&A) | Every team member must be able to explain every design choice, **including AI-written code**. Keep code simple and comment the *why*. |
+| 20% | Clean, intuitive UI | Use one component library and stay consistent. |
+| 15% | Bonus features | Only count once the required features work. Do them last. |
+
+**Rule for Claude Code:** prefer the simplest solution a teammate could explain in 30 seconds. No clever abstractions, no extra frameworks, no premature optimization.
+
+---
+
+## Stack
+
+Chosen to look like a real AP system (a judging criterion), while staying small enough to explain.
+
+- Frontend: React + Vite + TypeScript, Ant Design as the only component library (`frontend/`).
+- Backend: Python 3.12 + FastAPI, plain SQL through psycopg 3, no ORM (`backend/app/`).
+- Database: Postgres 17. Money is integer cents. The audit table is append-only, enforced by a trigger.
+- Extraction: an OCR worker (step 2) that reads the PDF text layer, falls back to Tesseract OCR for scans, and
+  parses fields with deterministic code. It pulls jobs from a Postgres table (`FOR UPDATE SKIP LOCKED`), so
+  workers can run on other machines.
+- LLM provider: **none.** No LLM API key, and none will be added. See the architecture principles.
+- How to run locally: `make up` (= `docker compose up --build`). UI on http://localhost:5173, API docs on
+  http://localhost:8000/docs. Needs Docker only.
+- How to seed the data: automatic on first start. `make reseed` wipes and reloads. `make test` runs the tests
+  against a separate `ap_test` database.
+
+---
+
+## Data
+
+The dataset lives in `data/brim_ap_dataset/`. It is synthetic. **As-of date: 2026-11-02.** History runs from January to October 2026.
+
+| File | What it is |
+|---|---|
+| `data/users.csv` | 40 users: role, manager, `approval_limit_cad`, status (`active` / `on_leave` / `terminated`), `delegate_user_id` |
+| `data/departments.csv` | 8 departments, each with a manager and a budget |
+| `data/vendors.csv` | 56 vendors: GST/QST numbers, bank details, `requires_po`, status (`active` / `pending_review` / `on_hold`) |
+| `data/bank_change_history.csv` | Vendor bank changes: channel, and whether they were verified by callback |
+| `data/approval_policies.csv` | Rules P01–P13 (see below) |
+| `data/gl_accounts.csv` | Chart of accounts |
+| `data/tax_codes.csv` | `HST13`, `GST5`, `PST7_BC` (goods only), `QST9975`, `EXEMPT`, `FOREIGN` |
+| `data/contracts.csv` | Fixed monthly fees, hourly rate caps, fuel surcharge caps, not-to-exceed limits |
+| `data/purchase_orders.csv` | POs with status (`open` / `partially_invoiced` / `closed`) |
+| `data/invoices.csv`, `data/invoice_lines.csv` | About 426 historical invoices and their lines. Use these to train GL/department coding. |
+| `data/approvals.csv` | Historical approval steps |
+| `data/payments.csv` | Historical payments (`EFT` / `CHEQUE` / `CARD`) |
+| `data/bank_statement.csv` | Bank debits and credits (EFT and cheque) |
+| `data/card_transactions.csv` | Employee cards and AP single-use Brim virtual cards |
+| `data/fx_rates.csv` | Daily USD→CAD rates |
+| `incoming_invoices/` | 56 unprocessed invoices: PDFs plus 2 PNG scans, in English and French |
+| `inbox/emails.json` | 59 unprocessed AP inbox emails, with attachments referenced by filename |
+
+### Tax rules (as given by the brief, not real-world tax advice)
+
+- The place of supply is `ship_to_province`, the province the goods or services are delivered to. For incoming invoices, take it from the **Bill to** address.
+- **ON:** HST 13%.
+- **AB, BC:** GST 5%. BC also adds **PST 7% on goods only**, and PST is not recoverable.
+- **QC:** GST 5% plus **QST 9.975% on the pre-tax amount**.
+- Insurance is exempt. Foreign (US) vendors charge no Canadian tax.
+- GST/HST is recoverable to GL 1160 and QST to GL 1165.
+- USD invoices convert to CAD at the `fx_rates.csv` rate **on the invoice date**.
+
+---
+
+## Business rules (enforce on the server, never only in the UI)
+
+### Roles
+
+`employee`, `ap_clerk`, `approver` (department manager), `finance_manager`, `controller_admin`, `auditor` (read-only).
+
+### Approval routing (`approval_policies.csv`)
+
+| Rule | Condition | Who must approve |
+|---|---|---|
+| P01 | Total ≤ $10,000 CAD | Department manager |
+| P02 | Total > $10,000 | Department manager, then finance manager |
+| P03 | Total > $50,000 | ...then controller |
+| P04 | Total > $250,000 | ...then CFO |
+| P05 | Vendor is `pending_review` or new | Extra finance manager step, whatever the amount |
+| P06 | Vendor category is Legal | Extra finance manager step, whatever the amount |
+| P07 | Requester would be the approver | Escalate to the approver's manager. **No self-approval.** |
+| P08 | Approver is on leave | Route to their `delegate_user_id` and **record that it was a delegation** |
+
+### Payment release
+
+| Rule | Condition | Who can release |
+|---|---|---|
+| P09 | Payment ≤ $100,000 | Finance manager. AP clerks prepare payments but **cannot release** them. |
+| P10 | Payment > $100,000 | Controller |
+| P11 | Always | **Whoever approved the invoice cannot release its payment** (separation of duties) |
+
+### Matching
+
+| Rule | Condition | What happens |
+|---|---|---|
+| P12 | Invoice references a PO | The total must fit within the PO's remaining balance. Over-balance invoices go to the finance manager. |
+| P13 | Vendor `requires_po` and no PO | **Hold** |
+
+### Other non-negotiables
+
+- One person can't fill two approval steps on the same invoice. If a delegate is also the next approver, escalate.
+- Unapproved, on-hold or unknown vendors can't be paid.
+- A vendor bank change takes effect only after **callback verification**. Payments to that vendor are held until then.
+- Every state change writes an audit event (see below).
+
+---
+
+## The 9 required features
+
+1. **Intake.** Accept uploads and read `inbox/emails.json`. Ignore or route non-invoice emails (newsletters, statements, payment-status questions, emails missing an attachment). An email can contain more than one invoice.
+2. **Extraction.** Pull vendor, invoice #, dates, lines, subtotal, taxes, total, currency, GST/QST numbers and remit-to bank details from English and French PDFs and from scans. Map the taxes to tax codes. Show a confidence level and let a person correct fields.
+3. **Smart coding.** Suggest a GL account and department, learned from historical `invoice_lines.csv` and the vendor's `default_gl_account`. Show the reason ("8 of 9 past invoices from this vendor went to 5010") and allow an override.
+4. **Validation and matching.** Check against the vendor master, contracts and POs. Run tax checks by province and arithmetic checks (lines sum to the subtotal, the subtotal plus tax equals the total, each tax equals its rate × the subtotal).
+5. **Duplicate detection.** This includes reformatted numbers (`583` vs `FA-000583`, `000903-A` vs `000903`) and invoices already paid by card (`card_transactions.csv`).
+6. **Approval workflow.** Configurable rules (P01–P08), delegation, absence handling, and one history view per invoice.
+7. **Payments.** Simulated EFT, with release limits by role (P09–P11), a dashboard, and a status for each payment.
+8. **Audit trail.** Every payment links to its invoice, approvals, GL codes and the user who did each step.
+9. **Vendor management.** Onboarding, holding unapproved vendors, controlled bank-detail changes with callback verification, and detection of near-duplicate vendors.
+
+### Suggested build order
+
+1. Seed all CSVs into the database.
+2. Get one invoice through every stage end to end, even if it's ugly.
+3. Fill in each stage.
+4. Polish the UI.
+5. Add bonus features.
+
+---
+
+## Architecture principles
+
+- **No LLM anywhere** (team decision, 2026-11-21; supersedes the original "AI for extraction and GL codes").
+  Extraction is OCR plus deterministic parsing, and confidence is calculated from cross-checks. GL coding is a
+  frequency count over `invoice_lines.csv` plus nearest past line description. Reasons: auditable, same
+  output every run, bank details never leave our machines, no per-invoice cost, and the dataset's OCR traps
+  (Prairie scan) only show up with real OCR. A benchmark against a local vision model is a possible bonus.
+- **Everything else is deterministic code:** duplicate checks, tax and arithmetic checks, PO and contract matching, approval routing, permissions. These must be explainable line by line in the Q&A and must give the same result every time.
+- **Every check returns a reason**, e.g. `{ code: "FUEL_SURCHARGE_OVER_CAP", severity: "block", message: "Fuel surcharge 22% exceeds contract C018 cap of 12%" }`. The UI shows these reasons as plain language. Never show a bare "flagged".
+- **Severities:** `block` (can't proceed), `warn` (needs a human acknowledgement), `info`.
+- **One audit table**, append-only: `actor_user_id`, `on_behalf_of_user_id` (for delegation), `action`, `entity_type`, `entity_id`, `before`, `after`, `reason`, `timestamp`. Every API mutation writes to it.
+- **Check permissions in one place** (a single `can(user, action, resource)` function), not scattered across routes.
+- **Money:** store amounts in integer cents or as decimals, **never floats**. Round tax to 2 decimals.
+- **Dates:** treat **2026-11-02** as "today" (configurable). Invoice dates after that are future-dated.
+- **Login for the demo:** a user switcher (pick any of the 40 users) is fine. Don't build real auth.
+
+---
+
+## Acceptance tests: traps planted in the data
+
+The app must catch each of these. See `TRAP_MAP.md` (copied from the project doc) for the full list. Turn them into automated tests where you can.
+
+**Fraud and vendors**
+- Cascadia Cartage (V004): bank changed 2026-10-27 **by email, not verified** (BC-009). Invoices 1624 (`scan_8049.png`) and 1625 pay to the new account → hold.
+- "Harlow **and** Stern LLP" (V052) is a look-alike of Harlow & Stern LLP (V026), with a different domain, GST number and bank. Invoice HA26-2766 → block.
+- Great Lakes Carriers Incorporated (V053) duplicates V002.
+- Blue Heron Couriers and Zephyr Data are not in the vendor master.
+- Riverbend Catering (V054) is `pending_review`.
+
+**Duplicates**
+- Polar 000961 (= AP-00393), Harlow & Stern 001468 (= AP-00389), Cloudbarn INV-01561 (= AP-00370, paid by card), Voyageur 000903-A (= AP-00277), Brightline 583 (= AP-00330 #FA-000583).
+- In the history: AP-00394 and AP-00407 are both scheduled for the same invoice, so it's **about to be paid twice**. Several invoices were already paid twice, or paid by EFT and also on an employee card. That's about **$23.6k** overpaid.
+
+**Math, tax and contracts**
+- Evergreen 000850: the total is $100 off.
+- Northstar NO26-1773: 24 × $150 ≠ $3,800.
+- Polar 000964: 22% fuel surcharge vs the 12% cap.
+- Northbound 000639: HST charged on an AB delivery.
+- Ironwood INV-02210: no tax on ON goods.
+- Beaumont FA-000557: no QST on a QC delivery.
+- Signal & Sparrow 000970: PST charged on services.
+- Aurora AU26-2207 and Pinecone PI26-2809: billed over the fixed contract fee.
+- Summit 000809: future-dated.
+- Torque 1771: contract expired and over the PO balance.
+
+**Approvals**
+- Orion 279, 281 and 287 on the same day add up to about $14.5k: a split to stay under $10k.
+- In the history: self-approvals by U010 (AP-00092, AP-00178, AP-00235).
+- Liam O'Connor (U012) is on leave and his delegate is the finance manager (U003). On a Facilities invoice over $10k (Queen Street rent 002935, $18,758), U003 can't fill both steps and can't release the payment.
+
+**PO matching**
+- No incoming invoice prints a PO number. Match each one to the vendor's open PO.
+- Hardhat 853 and Brightline 583 have **no open PO**, so they're held.
+
+**Inbox**
+- EM-059 is a newsletter and EM-056 is a statement: don't create invoices.
+- EM-058 is missing its attachment.
+- EM-057 asks about invoice 1743, which was already paid (PAY-00047, 2026-03-09).
+- EM-029 contains two invoices.
+
+**Credit notes**
+- Fixwell CN-FA-000413 and Great Lakes CN-GR26-2274 should be applied against the next payment to that vendor, not paid out.
+
+---
+
+## Our differentiators (only once the core works)
+
+1. **"Try to Fool Us" mode.** Judges forge an invoice or a bank change live, and the app catches it.
+2. **Bank-change callback.** Hold payments and make someone call the **phone number on file before the change**. Log who called and the outcome.
+3. **Overpayment recovery.** "You paid $23.6k twice this year." Show it as a list of what to claw back.
+4. **Lost tax-credit alert.** Flag invoices missing GST/QST numbers or charging tax wrongly, with the dollar amount at risk.
+5. **"Where's my money?" auto-reply.** Detect payment-status emails and draft a reply from the payment record.
+
+Brim-specific bonuses worth doing: single-use virtual card payments, and "already paid by card" detection.
+
+---
+
+## Conventions
+
+- Keep files small and named after what they do (`checks/duplicates.ts`, `checks/tax.ts`, `workflow/routing.ts`).
+- Each check is a pure function: `(invoice, context) => CheckResult[]`. That makes it easy to unit test against the trap list above.
+- Don't hardcode vendor IDs or invoice numbers in app logic. Hardcode them only in tests and demo scripts.
+- Commit often with clear messages. Don't commit `.env` or API keys.
+- If a requirement is ambiguous, pick the simplest reasonable reading, leave a `// DECISION:` comment explaining it, and add it to the list below so we can explain it to the judges.
+
+### Decisions log
+
+- **PO balance compared on the total including tax.** P12's text says "total", and the trap map's expected
+  results only hold this way (Summit 000809: $5,000 pre-tax fits its $5,500 PO, $5,748.75 with tax does not).
+  Historical POs are inconsistent (most equal the pre-tax subtotal), so the data doesn't settle it.
+  Pre-tax is common practice because tax is recoverable; be ready to defend the choice.
+- **Duplicate matching key:** same vendor (or a flagged look-alike vendor) + normalized invoice number
+  (uppercase, keep digits, drop leading zeros and suffixes like `-A`: `FA-000583` → `583`) = block.
+  Same vendor + same total within 30 days with a different number = warn. Matching card transaction = block.
+- **Delegate conflict handling:** if the on-leave approver's delegate would also fill a later step, the
+  delegated step escalates to the on-leave approver's own manager instead. Queen Street 002935: step 1 →
+  U001 (Liam's manager), step 2 → U003 (finance manager), release → U002. Rejected alternative: U003 does
+  step 1 and step 2 escalates to U002, which leaves only the CFO able to release.
+- **Release when the finance manager is conflicted (P11):** any `controller_admin` who did not approve the
+  invoice may release, since a controller outranks the finance manager.
+- **"Today" is 2026-11-02**, set by `AP_TODAY`. Audit timestamps use the real clock (when it happened).
+- **Policy thresholds are data:** dollar amounts are parsed from `approval_policies.condition` at seed time
+  into `threshold_cents`, and routing reads them from there. That's what "configurable" means here.
+- **Requester and department of incoming invoices** (they print neither): department comes from the GL coding
+  suggestion; requester is the matched PO's requester, else the vendor's most frequent past requester.
+  Both are editable before submitting for approval.
+- **Credit notes** are stored as negative invoices, never paid out, and netted against the vendor's next payment.
+- **History stays live:** the 18 historical `scheduled` payments appear on the payments dashboard, so the
+  AP-00394/AP-00407 double payment is caught there.
+- **Uploaded files are stored in Postgres** (all under 1 MB), so a worker on another machine needs only a
+  database connection.

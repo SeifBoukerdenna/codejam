@@ -1,0 +1,21 @@
+# secrets
+.env
+.env.*
+
+# the dataset is committed extracted under data/; the original zip is not needed
+*.zip
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# node
+node_modules/
+dist/
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/

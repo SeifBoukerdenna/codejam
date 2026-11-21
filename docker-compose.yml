@@ -1,0 +1,54 @@
+# `docker compose up --build` (or `make up`) starts the whole app:
+#   db   Postgres: all data, the extraction job queue, the append-only audit log
+#   api  FastAPI: business rules, checks, approval workflow, permissions. Seeds the database on first start.
+#   web  React UI on http://localhost:5173 (proxies /api to the api service)
+# The OCR worker is added in step 2.
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ap
+      POSTGRES_PASSWORD: ap
+      POSTGRES_DB: ap
+    # Bound to localhost only: the password is a placeholder. To run a worker on another machine, change
+    # this to "5432:5432" on a trusted network and point the worker's DATABASE_URL at this host.
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ap -d ap"]
+      interval: 2s
+      retries: 30
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://ap:ap@db:5432/ap
+      DATA_DIR: /data/brim_ap_dataset
+      AP_TODAY: "2026-11-02"
+    volumes:
+      - ./backend:/app/backend          # live code reload while developing
+      - ./data:/data:ro
+    ports: ["8000:8000"]
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "python -m app.seed --if-empty && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  web:
+    image: node:24-alpine
+    working_dir: /web
+    environment:
+      API_URL: http://api:8000
+    volumes:
+      - ./frontend:/web
+      # Separate volume so the container's Linux node_modules never mix with a teammate's macOS/Windows ones.
+      - web_node_modules:/web/node_modules
+    ports: ["5173:5173"]
+    depends_on: [api]
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+
+volumes:
+  pgdata:
+  web_node_modules:
