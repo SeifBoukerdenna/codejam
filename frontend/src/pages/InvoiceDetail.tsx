@@ -1,26 +1,27 @@
-import { FileSearchOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, FileSearchOutlined } from "@ant-design/icons";
 import { Button } from "antd";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { send, type Email, type InvoiceDetail as Data, type Permission } from "../api";
 import { ReasonModal, useRunner } from "../components/actions";
 import InvoiceEditor from "../components/InvoiceEditor";
-import { Avatar, Hero, Loading, Notice, Page, Pill, Row, Section } from "../components/ui";
+import { Avatar, Check, Hero, Loading, Notice, Page, Panel, Pill, Row, Section, Tiles } from "../components/ui";
 import VendorForm from "../components/VendorForm";
 import {
-  APPROVER_ROLE, INVOICE_STATUS, METHOD, PROVINCE, dateTime, instant, longDate, money, shortDate, statusOf, type Tone,
+  APPROVER_ROLE, INVOICE_STATUS, METHOD, PAYMENT_STATUS, PROVINCE, dateTime, instant, longDate, money, shortDate, statusOf,
+  type Tone,
 } from "../format";
 import { useApi, useSession } from "../session";
 
-// One page tells the whole story of an invoice: what we read, what we checked, who approved it, how it was
-// paid, and every change in the audit log. It also carries the ONE next action for whoever is looking.
+// One page tells the whole story of an invoice. The right panel holds the ONE next action for whoever is
+// looking, plus who approves it and how it gets paid.
 
 const SEVERITY_TONE: Record<string, Tone> = { block: "negative", warn: "warning", info: "info" };
-// A passed check (TAX_OK, PO_MATCHED...) is good news, so it's green, not informational blue.
+// A passed check (TAX_OK, PO_MATCHED...) is good news.
 const checkTone = (c: { severity: string; code: string }): Tone =>
   c.severity === "info" && /_OK$|_MATCHED$/.test(c.code) ? "positive" : SEVERITY_TONE[c.severity];
 
-function statusSentence(d: Data, today: string): string {
+function statusSentence(d: Data, today: string, me?: string | null): string {
   const inv = d.invoice;
   const pay = d.payments.filter((p) => p.status !== "cancelled").at(-1);
   const method = pay ? (METHOD[pay.method] ?? pay.method).toLowerCase() : "";
@@ -33,25 +34,21 @@ function statusSentence(d: Data, today: string): string {
     case "scheduled":
       if (!pay) return "Payment scheduled";
       if (pay.status === "held") return "Payment on hold";
-      if (pay.status === "prepared") return "Payment ready, waiting for a finance manager to release it";
-      if (pay.status === "released") return `Sent by ${method}, waiting for the bank to confirm`;
-      return `Payment scheduled for ${shortDate(pay.scheduled_date, today)} by ${method}`;
+      if (pay.status === "prepared") return "Waiting for a finance manager to release it";
+      if (pay.status === "released") return `Sent by ${method}, waiting for the bank`;
+      return `Scheduled for ${shortDate(pay.scheduled_date, today)}`;
     case "rejected": {
       const r = d.approvals.find((a) => a.action === "rejected");
-      return r ? `Declined by ${r.approver_name}${r.comment ? `: “${r.comment}”` : ""}` : inv.hold_reason ?? "Rejected";
+      return r ? `Declined by ${r.approver_name}` : "Rejected";
     }
     case "pending_approval": {
       const p = d.approvals.find((a) => a.action === "pending");
-      return p ? `Waiting for ${p.approver_name} to approve` : "Waiting for approval";
+      return p ? (p.approver_user_id === me ? "Waiting for you" : `Waiting for ${p.approver_name}`) : "Waiting for approval";
     }
-    case "approved":
-      return inv.is_credit_note ? "Approved. Will be deducted from the next payment" : "Approved, ready to pay";
-    case "on_hold":
-      return "On hold until the problems below are fixed";
-    case "needs_review":
-      return "A person needs to look at it before it goes for approval";
-    default:
-      return statusOf(INVOICE_STATUS, inv.status).label;
+    case "approved": return inv.is_credit_note ? "Will be deducted from the next payment" : "Approved, ready to pay";
+    case "on_hold": return "Blocked until the problems below are fixed";
+    case "needs_review": return "Needs a person before it goes for approval";
+    default: return statusOf(INVOICE_STATUS, inv.status).label;
   }
 }
 
@@ -69,77 +66,55 @@ const EVENT_WORDS: Record<string, string> = {
 function historySteps(d: Data, today: string): Step[] {
   const inv = d.invoice;
   const steps: Step[] = [];
-
   if (inv.source !== "history") {
-    // New invoices: the audit log IS the history, in the order things happened. Approval events get their
-    // role, rules and routing note from the approval step they belong to.
+    // The audit log IS the history, in the order things happened.
     const stepByNo = new Map(d.approvals.map((a) => [a.step_no, a]));
     for (const e of d.history) {
       if (e.action === "invoice.approve" || e.action === "invoice.decline") {
         const a = stepByNo.get(Number((e.after as { step?: number } | null)?.step));
-        const role = a ? APPROVER_ROLE[a.approver_role] ?? a.approver_role : "";
         steps.push({
-          key: `e${e.event_id}`,
-          title: `${e.action === "invoice.approve" ? "Approved" : "Declined"} by ${e.actor_name}`,
-          sub: [role, a?.rule_ids, e.on_behalf_of_name && `on behalf of ${e.on_behalf_of_name}`, instant(e.created_at)]
-            .filter(Boolean).join(" · "),
-          dot: e.action === "invoice.approve" ? "" : "negative",
-          note: e.reason ?? a?.routing_note ?? undefined,
+          key: `e${e.event_id}`, title: `${e.action === "invoice.approve" ? "Approved" : "Declined"} by ${e.actor_name}`,
+          sub: [a && (APPROVER_ROLE[a.approver_role] ?? a.approver_role), e.on_behalf_of_name && `for ${e.on_behalf_of_name}`,
+            instant(e.created_at)].filter(Boolean).join(" · "),
+          dot: e.action === "invoice.approve" ? "" : "negative", note: e.reason ?? undefined,
         });
         continue;
       }
       if (e.action === "invoice.fully_approved" || e.action === "invoice.rejected") continue;
       steps.push({
-        key: `e${e.event_id}`,
-        title: `${EVENT_WORDS[e.action] ?? e.action.replace(/[._]/g, " ")}${e.actor_name ? ` · ${e.actor_name}` : ""}`,
+        key: `e${e.event_id}`, title: `${EVENT_WORDS[e.action] ?? e.action.replace(/[._]/g, " ")}${e.actor_name ? ` · ${e.actor_name}` : ""}`,
         sub: instant(e.created_at), dot: e.action.includes("hold") ? "negative" : e.action === "payment.settle" ? "positive" : "",
         note: e.reason ?? undefined,
       });
     }
-    // Steps that haven't happened yet come last.
-    for (const a of d.approvals.filter((x) => x.action === "pending")) {
-      const role = APPROVER_ROLE[a.approver_role] ?? a.approver_role;
-      steps.push({ key: a.approval_id, title: `Waiting for ${a.approver_name}`,
-        sub: [role, a.rule_ids, a.on_behalf_of_name && `on behalf of ${a.on_behalf_of_name}`].filter(Boolean).join(" · "),
-        dot: "pending", note: a.routing_note ?? undefined });
-    }
     return steps;
   }
-
   // History invoices (from the dataset) have no audit events: rebuild the story from approvals and payments.
   if (inv.received_date) steps.push({ key: "received", title: "Received", sub: longDate(inv.received_date), dot: "" });
   for (const a of d.approvals) {
-    const role = APPROVER_ROLE[a.approver_role] ?? a.approver_role;
     steps.push({ key: a.approval_id, title: `${a.action === "approved" ? "Approved" : "Declined"} by ${a.approver_name}`,
-      sub: `${role} · ${dateTime(a.acted_at, today)}`, dot: a.action === "approved" ? "" : "negative",
-      note: a.comment ?? undefined });
+      sub: `${APPROVER_ROLE[a.approver_role] ?? a.approver_role} · ${dateTime(a.acted_at, today)}`,
+      dot: a.action === "approved" ? "" : "negative", note: a.comment ?? undefined });
   }
   for (const p of d.payments) {
-    const method = METHOD[p.method] ?? p.method;
-    const who = [p.prepared_by_name && `prepared by ${p.prepared_by_name}`, p.released_by_name && `released by ${p.released_by_name}`]
-      .filter(Boolean).join(", ");
-    const title = p.status === "settled" ? `Paid by ${method.toLowerCase()}`
-      : p.status === "outstanding" ? "Cheque sent, not cashed yet" : `Payment ${p.status} · ${method.toLowerCase()}`;
-    const when = p.paid_date ? shortDate(p.paid_date, today) : `For ${shortDate(p.scheduled_date, today)}`;
-    steps.push({ key: p.payment_id, title, sub: `${when} · ${p.payment_id}${who ? ` · ${who}` : ""}`,
-      dot: p.status === "settled" ? "positive" : p.status === "outstanding" ? "" : "pending" });
+    const method = (METHOD[p.method] ?? p.method).toLowerCase();
+    steps.push({ key: p.payment_id,
+      title: p.status === "settled" ? `Paid by ${method}` : p.status === "outstanding" ? "Cheque sent, not cashed yet" : `Payment ${p.status}`,
+      sub: `${p.paid_date ? shortDate(p.paid_date, today) : `for ${shortDate(p.scheduled_date, today)}`} · ${p.payment_id}`,
+      dot: p.status === "settled" ? "positive" : "" });
   }
   return steps;
 }
 
-const CONFIDENCE_FIELDS: [string, string][] = [
-  ["vendor_name", "Vendor"], ["invoice_number", "Invoice number"], ["invoice_date", "Invoice date"], ["due_date", "Due"],
-  ["vendor_gst", "GST/HST number"], ["bank_institution", "Institution"], ["bank_transit", "Transit"],
-  ["bank_account", "Account"], ["total_cents", "Total"], ["lines", "Lines"],
+// What was printed on the document (identity + where to pay). Business details live in "Details" below.
+const READ_FIELDS: [string, string][] = [
+  ["invoice_number", "Invoice number"], ["invoice_date", "Invoice date"], ["vendor_gst", "GST/HST number"],
+  ["bank_institution", "Institution"], ["bank_transit", "Transit"], ["bank_account", "Account"],
 ];
-
-function confidenceTone(score: number): Tone {
-  return score >= 0.8 ? "positive" : score >= 0.6 ? "warning" : "negative";
-}
 
 export default function InvoiceDetail() {
   const { invoiceId } = useParams();
-  const { today } = useSession();
+  const { today, userId } = useSession();
   const navigate = useNavigate();
   const run = useRunner();
   const { data, error, reload } = useApi<Data>(`/invoices/${invoiceId}`);
@@ -168,137 +143,158 @@ export default function InvoiceDetail() {
     { perm: a.settle, label: "Record bank confirmation", act: post(`/payments/${a.payment_id}/settle`), done: "Marked as paid" },
     { perm: a.recheck, label: "Run the checks again", act: post(`/invoices/${inv.invoice_id}/recheck`), done: "Checks re-run" },
   ];
-  const applicable = candidates.filter((c) => c.perm);
-  const primary = applicable.find((c) => c.perm!.allowed) ?? applicable[0];
-  const secondary = (
+  const primary = candidates.filter((c) => c.perm).find((c) => c.perm!.allowed) ?? candidates.find((c) => c.perm);
+  const problems = data.checks.filter((c) => c.severity !== "info");
+  const passed = data.checks.filter((c) => c.severity === "info");
+  const firstPending = data.approvals.find((s) => s.action === "pending")?.step_no;
+
+  const rail = (
     <>
-      {a.decline?.allowed && <button className="text-button" onClick={() => setModal("decline")}>Decline</button>}
-      {a.reject?.allowed && !a.decline && <button className="text-button" onClick={() => setModal("reject")}>Reject invoice</button>}
-      {a.cancel_payment?.allowed && <button className="text-button" onClick={() => setModal("cancel")}>Stop payment</button>}
-      {a.edit?.allowed && <button className="text-button" onClick={() => setEditing(true)}>Correct fields</button>}
+      <Panel>
+        <Pill tone={status.tone}>{status.label}</Pill>
+        <div style={{ fontWeight: 600, marginTop: 10, fontSize: 16, letterSpacing: "-0.01em" }}>{statusSentence(data, today, userId)}</div>
+        {data.review_reasons.length > 0 && (
+          <div className="checks" style={{ marginTop: 8 }}>
+            {data.review_reasons.map((r) => <Check key={r} tone="warning">{r}</Check>)}
+          </div>
+        )}
+        <div className="panel-actions">
+          {primary && (
+            <Button type="primary" size="large" shape="round" disabled={!primary.perm!.allowed}
+              onClick={() => run(primary.act, primary.done, reload)}>{primary.label}</Button>
+          )}
+          {a.decline?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setModal("decline")}>Decline</Button>}
+          {a.edit?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setEditing(true)}>Correct fields</Button>}
+          {a.reject?.allowed && !a.decline && <Button className="danger-soft" size="large" shape="round" onClick={() => setModal("reject")}>Reject invoice</Button>}
+          {a.cancel_payment?.allowed && <Button className="danger-soft" size="large" shape="round" onClick={() => setModal("cancel")}>Stop payment</Button>}
+        </div>
+        {primary && !primary.perm!.allowed && <div className="reason">{primary.perm!.reason}</div>}
+        {!primary && !a.edit?.allowed && !a.cancel_payment?.allowed && <div className="reason">Nothing for you to do here.</div>}
+      </Panel>
+
+      {data.approvals.length > 0 && (
+        <Panel title="Approvals">
+          <div className="steps">
+            {data.approvals.map((s) => (
+              <div className="step" key={s.approval_id}>
+                <div className={`step-mark ${s.action === "approved" ? "done" : s.action === "rejected" ? "declined" : s.step_no === firstPending ? "now" : ""}`}>
+                  {s.action === "approved" ? <CheckOutlined /> : s.action === "rejected" ? <CloseOutlined /> : s.step_no}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div className="step-name">{s.approver_name}</div>
+                  <div className="step-sub">
+                    {APPROVER_ROLE[s.approver_role] ?? s.approver_role}{s.rule_ids ? ` · ${s.rule_ids}` : ""}
+                    {s.on_behalf_of_name ? ` · for ${s.on_behalf_of_name}` : ""}
+                  </div>
+                  {s.routing_note && <div className="step-sub" style={{ marginTop: 3 }}>{s.routing_note}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {pay && (
+        <Panel title="Payment">
+          <div className="panel-stat"><span>Status</span><span><Pill tone={statusOf(PAYMENT_STATUS, pay.status).tone}>{statusOf(PAYMENT_STATUS, pay.status).label}</Pill></span></div>
+          <div className="panel-stat"><span>Amount</span><span>{money(pay.amount_cents, pay.currency)}</span></div>
+          {!!pay.credit_applied_cents && <div className="panel-stat"><span>Credit deducted</span><span>{money(pay.credit_applied_cents)}</span></div>}
+          <div className="panel-stat"><span>Method</span><span>{METHOD[pay.method] ?? pay.method}</span></div>
+          <div className="panel-stat"><span>{pay.paid_date ? "Paid" : "Date"}</span><span>{shortDate(pay.paid_date ?? pay.scheduled_date, today)}</span></div>
+          {pay.reference && <div className="panel-stat"><span>Reference</span><span>{pay.reference}</span></div>}
+          {pay.prepared_by_name && <div className="panel-stat"><span>Prepared by</span><span>{pay.prepared_by_name}</span></div>}
+          {pay.released_by_name && <div className="panel-stat"><span>Released by</span><span>{pay.released_by_name}</span></div>}
+        </Panel>
+      )}
+    </>
+  );
+
+  const head = (
+    <>
+      <button className="link-button" onClick={() => navigate(-1)} style={{ marginBottom: 22 }}><ArrowLeftOutlined /> Back</button>
+
+      <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 26 }}>
+        <Avatar name={inv.vendor_name ?? x?.fields.vendor_name ?? "?"} size="lg" />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 650, fontSize: 18, letterSpacing: "-0.01em" }}>
+            {inv.vendor_id ? <Link to={`/vendors/${inv.vendor_id}`}>{inv.vendor_name}</Link> : x?.fields.vendor_name ?? "Unknown vendor"}
+          </div>
+          <div className="muted small">{inv.is_credit_note ? "Credit note" : "Invoice"} {inv.vendor_invoice_number ?? "—"} · {inv.invoice_id}</div>
+        </div>
+      </div>
+
+      <Hero label={inv.is_credit_note ? "Credit" : "Amount"} value={amount}
+        meta={inv.currency !== "CAD" && inv.total_cad_cents !== null
+          ? <span>≈ {money(inv.total_cad_cents)} at {inv.fx_rate_to_cad} on {shortDate(inv.invoice_date, today)}</span>
+          : <span>Due {longDate(inv.due_date)}</span>} />
     </>
   );
 
   return (
-    <Page>
-      <button className="back-link" onClick={() => navigate(-1)}>← Back</button>
+    <Page rail={rail} railFirst head={head}>
 
-      <Row
-        avatar={<Avatar name={inv.vendor_name ?? x?.fields.vendor_name ?? "?"} />}
-        title={inv.vendor_id ? <Link to={`/vendors/${inv.vendor_id}`}>{inv.vendor_name}</Link>
-          : `${x?.fields.vendor_name ?? "Unknown vendor"} (not in our vendor list)`}
-        sub={`${inv.is_credit_note ? "Credit note" : "Invoice"} ${inv.vendor_invoice_number ?? "—"} · ${inv.invoice_id}`}
-      />
-
-      <div className="section" style={{ marginTop: 28 }}>
-        <Hero
-          label={inv.is_credit_note ? "Credit" : "Amount"}
-          value={amount}
-          caption={<><Pill tone={status.tone}>{status.label}</Pill><span>{statusSentence(data, today)}</span></>}
-        />
-        {inv.currency !== "CAD" && inv.total_cad_cents !== null && (
-          <p className="muted" style={{ margin: "6px 0 0" }}>
-            ≈ {money(inv.total_cad_cents)} at {inv.fx_rate_to_cad} on {shortDate(inv.invoice_date, today)}
-          </p>
-        )}
-      </div>
-
-      <div className="section" style={{ marginTop: 24, display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-        {primary && (
-          <Button type="primary" shape="round" size="large" disabled={!primary.perm!.allowed}
-            onClick={() => run(primary.act, primary.done, reload)}>{primary.label}</Button>
-        )}
-        {secondary}
-      </div>
-      {primary && !primary.perm!.allowed && <p className="muted small" style={{ marginTop: 8 }}>{primary.perm!.reason}</p>}
-
-      {data.review_reasons.length > 0 && (
-        <Notice tone="warning" title="Before this can go for approval">
-          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{data.review_reasons.map((r) => <li key={r}>{r}</li>)}</ul>
-        </Notice>
-      )}
       {pay?.status === "held" && <Notice tone="negative" title="Payment on hold">{pay.hold_reason}</Notice>}
       {!inv.vendor_id && a.edit?.allowed && (
         <Notice tone="info" title="This vendor isn't in our list yet">
-          Add it (it starts as “pending review”), or pick the right vendor under Correct fields.{" "}
-          <button className="text-button" onClick={() => setOnboarding(true)}>Add this vendor</button>
+          <Button className="soft" shape="round" style={{ marginTop: 8 }} onClick={() => setOnboarding(true)}>Add this vendor</Button>
         </Notice>
       )}
       {data.audit_notes.map((n) => <Notice key={n} tone="negative" title="Audit finding">{n}</Notice>)}
 
       {data.checks.length > 0 && (
-        <Section title="What we checked">
-          {data.checks.map((c) => (
-            <Notice key={c.check_id} tone={checkTone(c)} title={c.message}>
-              {c.severity === "warn" && (c.acknowledged_by
-                ? <span>Acknowledged by {c.acknowledged_by_name}.</span>
+        <Section title="Checks" extra={passed.length ? <span>{passed.length} passed</span> : undefined}>
+          <div className="checks">
+            {[...problems, ...passed].map((c) => (
+              <Check key={c.check_id} tone={checkTone(c)} meta={c.severity === "warn" && (c.acknowledged_by
+                ? `Checked by ${c.acknowledged_by_name}`
                 : a.edit?.allowed && (
-                  <button className="text-button" onClick={() => run(
-                    () => send("POST", `/invoices/${inv.invoice_id}/checks/${c.check_id}/acknowledge`), "Acknowledged", reload)}>
-                    I've checked this
-                  </button>))}
-            </Notice>
-          ))}
+                  <Button className="soft" size="small" shape="round" style={{ marginTop: 4 }} onClick={() => run(
+                    () => send("POST", `/invoices/${inv.invoice_id}/checks/${c.check_id}/acknowledge`), "Marked as checked", reload)}>
+                    Mark as checked</Button>))}>
+                {c.message}
+              </Check>
+            ))}
+          </div>
         </Section>
       )}
 
       {x && (
-        <Section title="What we read"
-          extra={<a href={`/api/documents/${x.document_id}/file`} target="_blank" rel="noreferrer"><FileSearchOutlined /> Original</a>}
-          caption={<>
-            {x.engine === "text_layer" ? "Read from the PDF's own text." : "Scanned image, read with OCR (3 passes compared)."}{" "}
-            {x.doubtful.length > 0
-              ? <Pill tone="warning">{x.doubtful.length} {x.doubtful.length === 1 ? "field" : "fields"} to check</Pill>
-              : <Pill tone={confidenceTone(x.overall)}>{x.overall >= 0.8 ? "High" : x.overall >= 0.6 ? "Medium" : "Low"} confidence</Pill>}
-            {x.fields.language === "fr" && <> <Pill>French</Pill></>}
-            {inv.reviewed_by_name && <> · confirmed by {inv.reviewed_by_name}</>}
-          </>}>
-          <dl className="kv">
-            {CONFIDENCE_FIELDS.map(([key, label]) => {
-              const conf = x.field_confidence[key];
-              const raw = x.fields[key];
-              const value = key === "total_cents" ? money(raw as number, inv.currency)
-                : key === "lines" ? `${(raw as unknown[] | undefined)?.length ?? 0} lines` : (raw as string | null) ?? "—";
-              const doubtful = conf && conf.score !== null && conf.score < 0.8;
-              return [
-                <dt key={`${key}-t`}>{label}</dt>,
-                <dd key={`${key}-d`}>
-                  {value} {doubtful && <Pill tone={confidenceTone(conf.score!)}>check this</Pill>}
-                  {doubtful && <div className="muted small" style={{ fontWeight: 400 }}>{conf.note}</div>}
-                </dd>,
-              ];
-            })}
-          </dl>
+        <Section title="What we read" extra={
+          <a href={`/api/documents/${x.document_id}/file`} target="_blank" rel="noreferrer"><FileSearchOutlined /> Original</a>}>
+          <p className="muted small" style={{ margin: "-4px 0 12px" }}>
+            {x.engine === "text_layer" ? "From the PDF's text" : "Scanned image, 3 OCR passes compared"}
+            {x.fields.language === "fr" ? " · French" : ""}
+            {x.doubtful.length ? ` · ${x.doubtful.length} to confirm` : " · high confidence"}
+            {inv.reviewed_by_name ? ` · confirmed by ${inv.reviewed_by_name}` : ""}
+          </p>
+          <Tiles items={READ_FIELDS.map(([key, label]) => {
+            const conf = x.field_confidence[key];
+            const raw = x.fields[key];
+            const doubtful = conf && conf.score !== null && conf.score < 0.8;
+            return { label, value: key === "total_cents" ? money(raw as number, inv.currency) : (raw as string | null) ?? "—",
+              note: doubtful ? conf.note : undefined };
+          })} />
         </Section>
       )}
 
       <Section title="Details">
-        <dl className="kv">
-          <dt>Invoice date</dt><dd>{longDate(inv.invoice_date)}</dd>
-          <dt>Due</dt><dd>{longDate(inv.due_date)}</dd>
-          <dt>Department</dt><dd>{inv.department_name ?? "Not set"}</dd>
-          <dt>Requested by</dt><dd>{inv.requester_name ?? "Not set"}</dd>
-          <dt>Delivered to</dt><dd>{inv.ship_to_province ? (PROVINCE[inv.ship_to_province] ?? inv.ship_to_province) : "—"}</dd>
-          <dt>Purchase order</dt><dd>{data.po ? `${data.po.po_id} · ${data.po.description}` : "None"}</dd>
-          <dt>Contract</dt><dd>{data.contract ? `${data.contract.contract_id} · ${data.contract.description}` : "None"}</dd>
-          {email && <><dt>Came in</dt><dd>by email from {email.from_address} ({email.email_id})</dd></>}
-        </dl>
+        <Tiles items={[
+          { label: "Department", value: inv.department_name ?? "Not set" },
+          { label: "Requested by", value: inv.requester_name ?? "Not set" },
+          { label: "Delivered to", value: inv.ship_to_province ? PROVINCE[inv.ship_to_province] ?? inv.ship_to_province : "—" },
+          { label: "Purchase order", value: data.po ? data.po.po_id : "None" },
+          { label: "Contract", value: data.contract ? `${data.contract.contract_id} · ${data.contract.description}` : "None" },
+          { label: "Came in", value: email ? `Email · ${email.from_address}` : inv.source === "upload" ? "Upload" : inv.source === "history" ? "History" : "—" },
+        ]} />
       </Section>
 
-      <Section title="Lines" caption="Where each cost is charged (ledger account and department) and why we suggested it.">
+      <Section title="Lines">
         <div className="list">
           {data.lines.map((l) => (
-            <Row
-              key={l.line_no}
-              title={l.description}
-              sub={<>
-                {`${Number(l.quantity)} × ${money(l.unit_price_cents, inv.currency)}`}
-                {l.gl_account ? ` · ${l.gl_account} ${l.gl_name ?? ""}` : " · no account yet"}
-                {l.department_name ? ` · ${l.department_name}` : ""}
-                {l.coding_reason && <div className="small muted" style={{ whiteSpace: "normal" }}>{l.coding_reason}</div>}
-              </>}
-              end={<span className="row-amount">{money(l.amount_cents, inv.currency)}</span>}
-            />
+            <Row key={l.line_no} title={l.description}
+              sub={<>{`${Number(l.quantity)} × ${money(l.unit_price_cents, inv.currency)}`}{l.gl_account ? ` · ${l.gl_account} ${l.gl_name ?? ""}` : ""}
+                {l.coding_reason && <div className="small" style={{ whiteSpace: "normal", color: "var(--ink-3)", marginTop: 2 }}>{l.coding_reason}</div>}</>}
+              end={<span className="row-amount">{money(l.amount_cents, inv.currency)}</span>} />
           ))}
         </div>
         <div className="totals">
@@ -309,7 +305,7 @@ export default function InvoiceDetail() {
         </div>
       </Section>
 
-      <Section title="History" caption="Every step, who did it and why, from the audit log (which can't be edited).">
+      <Section title="Activity">
         <ol className="timeline">
           {historySteps(data, today).map((s) => (
             <li key={s.key}>
@@ -335,9 +331,8 @@ export default function InvoiceDetail() {
       <InvoiceEditor data={data} open={editing} onClose={() => setEditing(false)} onSaved={reload} />
       <VendorForm open={onboarding} fromInvoiceId={inv.invoice_id} onClose={() => setOnboarding(false)}
         onCreated={() => { setOnboarding(false); reload(); }}
-        initial={{ legal_name: x?.fields.vendor_name, gst_hst_number: x?.fields.vendor_gst,
-          bank_institution: x?.fields.bank_institution, bank_transit: x?.fields.bank_transit,
-          bank_account: x?.fields.bank_account, ap_contact_email: email?.from_address }} />
+        initial={{ legal_name: x?.fields.vendor_name, gst_hst_number: x?.fields.vendor_gst, bank_institution: x?.fields.bank_institution,
+          bank_transit: x?.fields.bank_transit, bank_account: x?.fields.bank_account, ap_contact_email: email?.from_address }} />
     </Page>
   );
 }

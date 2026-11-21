@@ -1,70 +1,94 @@
-import { CheckCircleFilled, ExclamationCircleFilled, InfoCircleFilled, StopFilled } from "@ant-design/icons";
+import { CheckOutlined, CloseOutlined, ExclamationCircleFilled, ExclamationOutlined, InfoCircleFilled,
+  MinusOutlined, StopFilled, CheckCircleFilled, InboxOutlined } from "@ant-design/icons";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { initials, type Tone } from "../format";
 
-// The handful of building blocks every page is made of. If a page needs something that isn't here, add it
-// here rather than styling it inline, so all screens stay consistent.
+// Every screen is built from these. Need something new? Add it here, not as inline styles on a page.
 
-export function Page({ children }: { children: ReactNode }) {
-  return <div className="page">{children}</div>;
+/** Main column, plus an optional sticky right panel (the "what to do next" side, like a trading ticket).
+ *  `head` spans both columns (who/what + the big number), so on a phone the order is head → panel → details. */
+export function Page({ children, rail, railFirst, head }: { children: ReactNode; rail?: ReactNode; railFirst?: boolean; head?: ReactNode }) {
+  return (
+    <div className={`page ${rail ? "" : "solo"} ${railFirst ? "rail-first" : ""}`}>
+      {head && <div className="page-head">{head}</div>}
+      <div className="content">{children}</div>
+      {rail && <aside className="rail">{rail}</aside>}
+    </div>
+  );
 }
 
 export function PageTitle({ title, subtitle }: { title: ReactNode; subtitle?: ReactNode }) {
   return (
     <header>
       <h1 className="page-title">{title}</h1>
-      {subtitle && <p className="page-subtitle">{subtitle}</p>}
+      {subtitle && <p className="page-sub">{subtitle}</p>}
     </header>
   );
 }
 
 /** The single big number a screen leads with. */
-export function Hero({ label, value, caption }: { label: ReactNode; value: ReactNode; caption?: ReactNode }) {
+export function Hero({ label, value, meta }: { label: ReactNode; value: ReactNode; meta?: ReactNode }) {
   return (
     <div>
       <div className="hero-label">{label}</div>
-      <div className="hero-value">{value}</div>
-      {caption && <div className="hero-caption">{caption}</div>}
+      <div className="hero-value num">{value}</div>
+      {meta && <div className="hero-meta">{meta}</div>}
     </div>
   );
 }
 
-export function Section(props: { title: ReactNode; extra?: ReactNode; caption?: ReactNode; children: ReactNode }) {
+export function Section(props: { title: ReactNode; extra?: ReactNode; children: ReactNode; first?: boolean }) {
   return (
-    <section className="section">
+    <section className="section" style={props.first ? { marginTop: 28 } : undefined}>
       <div className="section-head">
         <h2 className="section-title">{props.title}</h2>
         {props.extra && <div className="section-extra">{props.extra}</div>}
       </div>
-      {props.caption && <p className="section-caption">{props.caption}</p>}
       {props.children}
     </section>
   );
 }
 
-export function Pill({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
-  return <span className={`pill ${tone}`}>{children}</span>;
+export function Panel({ title, children }: { title?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="panel">
+      {title && <h3 className="panel-title">{title}</h3>}
+      {children}
+    </div>
+  );
 }
 
-export function Avatar({ name, size, dark }: { name: string | null | undefined; size?: "small" | "large"; dark?: boolean }) {
+export function Stat({ label, value }: { label: ReactNode; value: ReactNode }) {
+  return <div className="panel-stat"><span>{label}</span><span>{value}</span></div>;
+}
+
+export function Pill({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
+  return <span className={`badge ${tone}`}>{children}</span>;
+}
+
+// A muted colour per vendor/person, always the same for the same name, like a brand logo would be.
+const SWATCHES = [
+  ["#e8effc", "#2c56a8"], ["#e5f5ec", "#17703f"], ["#fdf0e0", "#9a5500"], ["#f1eafd", "#653cba"],
+  ["#fde8eb", "#ad2440"], ["#e3f4f4", "#0f6b6b"], ["#efefec", "#45453f"], ["#fdf6d8", "#7f6400"],
+];
+function swatch(name: string) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return SWATCHES[h % SWATCHES.length];
+}
+
+export function Avatar({ name, size, round, dark }: { name: string | null | undefined; size?: "sm" | "lg"; round?: boolean; dark?: boolean }) {
+  const [bg, fg] = dark ? ["#111111", "#ffffff"] : swatch(name ?? "?");
   return (
-    <div className={`avatar ${size ?? ""} ${dark ? "dark" : ""}`} aria-hidden>
+    <div className={`avatar ${size ?? ""} ${round ? "round" : ""}`} style={{ background: bg, color: fg }} aria-hidden>
       {initials(name)}
     </div>
   );
 }
 
-/** A list row: optional avatar, title + subtitle on the left, amount/status on the right.
- *  Pass `to` to make the whole row a link, or `onClick` to make it a button. */
-export function Row(props: {
-  avatar?: ReactNode;
-  title: ReactNode;
-  sub?: ReactNode;
-  end?: ReactNode;
-  to?: string;
-  onClick?: () => void;
-}) {
+/** A list row: logo, title + one line of context, amount/status on the right. Link, button, or static. */
+export function Row(props: { avatar?: ReactNode; title: ReactNode; sub?: ReactNode; end?: ReactNode; to?: string; onClick?: () => void }) {
   const content = (
     <>
       {props.avatar}
@@ -80,23 +104,63 @@ export function Row(props: {
   return <div className="row">{content}</div>;
 }
 
-const NOTICE_ICON: Record<Tone, ReactNode> = {
-  negative: <StopFilled />,
-  warning: <ExclamationCircleFilled />,
-  positive: <CheckCircleFilled />,
-  info: <InfoCircleFilled />,
-  neutral: <InfoCircleFilled />,
+const BANNER_ICON: Record<Tone, ReactNode> = {
+  negative: <StopFilled />, warning: <ExclamationCircleFilled />, positive: <CheckCircleFilled />,
+  info: <InfoCircleFilled />, neutral: <InfoCircleFilled />,
 };
 
-/** A problem or fact, explained in a sentence. Icon + words, so it never relies on colour alone. */
+/** For the few things that stop money. Icon + words, never colour alone. */
 export function Notice({ tone = "neutral", title, children }: { tone?: Tone; title: ReactNode; children?: ReactNode }) {
   return (
-    <div className={`notice ${tone}`} role={tone === "negative" ? "alert" : undefined}>
-      <div className="notice-icon">{NOTICE_ICON[tone]}</div>
+    <div className={`banner ${tone}`} role={tone === "negative" ? "alert" : undefined}>
+      <div className="banner-icon">{BANNER_ICON[tone]}</div>
       <div>
-        <div className="notice-title">{title}</div>
-        {children && <div className="notice-body">{children}</div>}
+        <div className="banner-title">{title}</div>
+        {children && <div className="banner-body">{children}</div>}
       </div>
+    </div>
+  );
+}
+
+const CHECK_ICON: Record<Tone, ReactNode> = {
+  positive: <CheckOutlined />, warning: <ExclamationOutlined />, negative: <CloseOutlined />,
+  info: <MinusOutlined />, neutral: <MinusOutlined />,
+};
+
+export function Check({ tone, children, meta }: { tone: Tone; children: ReactNode; meta?: ReactNode }) {
+  return (
+    <div className="check">
+      <div className={`check-icon ${tone}`}>{CHECK_ICON[tone]}</div>
+      <div className="check-text">{children}{meta && <div className="check-meta">{meta}</div>}</div>
+    </div>
+  );
+}
+
+export function Tiles({ items }: { items: { label: ReactNode; value: ReactNode; note?: ReactNode }[] }) {
+  return (
+    <div className="tiles">
+      {items.map((t, i) => (
+        <div className="tile" key={i}>
+          <div className="tile-label">{t.label}</div>
+          <div className="tile-value">{t.value}</div>
+          {t.note && <div className="tile-note">{t.note}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function Chips<T extends string>({ value, onChange, options }: {
+  value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; count?: number }[];
+}) {
+  return (
+    <div className="chips" role="tablist">
+      {options.map((o) => (
+        <button key={o.value} role="tab" aria-selected={o.value === value} className={`chip ${o.value === value ? "on" : ""}`}
+          onClick={() => onChange(o.value)}>
+          {o.label}{o.count !== undefined && <span className="chip-n">{o.count}</span>}
+        </button>
+      ))}
     </div>
   );
 }
@@ -104,21 +168,17 @@ export function Notice({ tone = "neutral", title, children }: { tone?: Tone; tit
 export function Empty({ title, children, icon }: { title: ReactNode; children?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="empty">
-      <div className="empty-icon">{icon ?? <CheckCircleFilled />}</div>
+      <div className="empty-icon">{icon ?? <InboxOutlined />}</div>
       <div className="empty-title">{title}</div>
-      {children && <div className="empty-body">{children}</div>}
+      {children && <div>{children}</div>}
     </div>
   );
 }
 
-/** Shown while the first response is loading, or if it failed. */
 export function Loading({ error }: { error?: string | null }) {
-  if (error) {
-    return (
-      <Page>
-        <Notice tone="negative" title="Couldn't load this page">{error}</Notice>
-      </Page>
-    );
-  }
-  return <Page><p className="muted">Loading…</p></Page>;
+  return (
+    <Page>
+      {error ? <Notice tone="negative" title="Couldn't load this page">{error}</Notice> : <p className="muted">Loading…</p>}
+    </Page>
+  );
 }

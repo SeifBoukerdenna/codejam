@@ -58,6 +58,7 @@ export function monthName(yyyyMm: string, long = false): string {
 /** "Polar Freight Lines Ltd." -> "PF", "Harlow & Stern LLP" -> "HS" */
 export function initials(name: string | null | undefined): string {
   if (!name) return "?";
+  if (/^U\d+$/.test(name)) return name.slice(1);
   const words = name.split(/\s+/).filter((w) => /^[A-Za-zÀ-ÿ]/.test(w) && !/^(and|et|of|the)$/i.test(w));
   return words.slice(0, 2).map((w) => w[0].toUpperCase()).join("");
 }

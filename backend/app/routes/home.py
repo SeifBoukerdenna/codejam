@@ -41,6 +41,13 @@ def home(conn=Depends(get_conn), user=Depends(current_user)):
         for m in months
     ]
 
+    # Daily totals for the cumulative "paid this year" line chart (the UI fills in days with nothing paid).
+    paid_daily = conn.execute(
+        """SELECT paid_date AS date, sum(amount_cad_cents)::bigint AS total_cad_cents, count(*) AS count
+           FROM payments WHERE paid_date BETWEEN %s AND %s GROUP BY paid_date ORDER BY paid_date""",
+        (year_start, today),
+    ).fetchall()
+
     user_id = user["user_id"] if user else None
     todo = {
         "emails_to_sort": _count(conn, "SELECT count(*) AS n FROM emails WHERE intake_status = 'unprocessed'"),
@@ -69,6 +76,7 @@ def home(conn=Depends(get_conn), user=Depends(current_user)):
         "paid_this_year_cad_cents": sum(m["total_cad_cents"] for m in paid_by_month),
         "payments_this_year": sum(m["count"] for m in paid_by_month),
         "paid_by_month": paid_by_month,
+        "paid_daily": paid_daily,
         "todo": todo,
         "scheduled": scheduled,
         "upcoming": upcoming,

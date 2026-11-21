@@ -59,7 +59,7 @@ export default function VendorForm(props: {
 
   return (
     <Drawer open={props.open} onClose={props.onClose} size={560} title={null} destroyOnHidden>
-      <h2 className="page-title" style={{ fontSize: 30 }}>Add a vendor</h2>
+      <h2 className="drawer-title">Add a vendor</h2>
       <p className="muted">New vendors can't be paid until someone else approves them.</p>
 
       {similar.map((s) => (
@@ -103,7 +103,7 @@ export default function VendorForm(props: {
           </Form.Item>
           <Form.Item name="requires_po" label="Needs a PO" valuePropName="checked"><Switch /></Form.Item>
         </div>
-        <Button type="primary" shape="round" size="large" htmlType="submit" loading={busy} block>Add vendor</Button>
+        <Button type="primary" shape="round" size="large" htmlType="submit" style={{ marginTop: 8 }} loading={busy} block>Add vendor</Button>
       </Form>
     </Drawer>
   );

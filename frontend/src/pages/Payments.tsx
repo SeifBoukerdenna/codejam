@@ -1,20 +1,20 @@
-import { Segmented } from "antd";
 import { Link, useSearchParams } from "react-router";
 import type { Findings, InvoiceRow, PaymentRow as Payment } from "../api";
 import PaymentRow from "../components/PaymentRow";
-import { Avatar, Empty, Hero, Loading, Notice, Page, PageTitle, Row, Section } from "../components/ui";
+import { Avatar, Chips, Empty, Hero, Loading, Notice, Page, PageTitle, Panel, Row, Section, Stat } from "../components/ui";
 import { money, plural, shortDate } from "../format";
 import { useApi, useSession } from "../session";
 
 type Summary = Record<string, { count: number; total_cad_cents: number; next_date: string | null }>;
+type Tab = "approved" | "prepared" | "held" | "going" | "outstanding" | "settled";
 
-// Tabs follow the money: approved -> prepared (to release) -> going out -> paid. Held sits beside them.
-const TABS = [
-  { key: "approved", label: "Ready to pay", hero: "Approved, not paid yet", statuses: [] as string[] },
-  { key: "prepared", label: "To release", hero: "Waiting for a finance manager to release", statuses: ["prepared"] },
-  { key: "held", label: "Held", hero: "Held: something must be fixed first", statuses: ["held"] },
-  { key: "going", label: "Going out", hero: "Released or scheduled with the bank", statuses: ["released", "scheduled"] },
-  { key: "outstanding", label: "Cheques not cashed", hero: "Sent by cheque, not cashed yet", statuses: ["outstanding"] },
+// Tabs follow the money: approved → prepared (to release) → going out → paid. Held sits beside them.
+const TABS: { key: Tab; label: string; hero: string; statuses: string[] }[] = [
+  { key: "approved", label: "Ready to pay", hero: "Approved, not paid yet", statuses: [] },
+  { key: "prepared", label: "To release", hero: "Waiting to be released", statuses: ["prepared"] },
+  { key: "held", label: "Held", hero: "On hold", statuses: ["held"] },
+  { key: "going", label: "Going out", hero: "Going out", statuses: ["released", "scheduled"] },
+  { key: "outstanding", label: "Uncashed cheques", hero: "Cheques not cashed yet", statuses: ["outstanding"] },
   { key: "settled", label: "Paid", hero: "Paid", statuses: ["settled"] },
 ];
 
@@ -30,54 +30,66 @@ export default function Payments() {
 
   const toPay = approved.data.filter((i) => !i.is_credit_note);
   const credits = approved.data.filter((i) => i.is_credit_note);
-  const sum = (statuses: string[]) => statuses.reduce(
-    (acc, s) => ({ count: acc.count + (data.summary[s]?.count ?? 0), total: acc.total + (data.summary[s]?.total_cad_cents ?? 0) }),
-    { count: 0, total: 0 });
+  const sum = (statuses: string[]) => statuses.reduce((acc, s) => ({
+    count: acc.count + (data.summary[s]?.count ?? 0), total: acc.total + (data.summary[s]?.total_cad_cents ?? 0) }), { count: 0, total: 0 });
   const count = (t: (typeof TABS)[number]) => (t.key === "approved" ? toPay.length : sum(t.statuses).count);
-  const hero = isInvoices
-    ? { count: toPay.length, total: toPay.reduce((a, i) => a + (i.total_cad_cents ?? 0), 0) }
-    : sum(tab.statuses);
+  const hero = isInvoices ? { count: toPay.length, total: toPay.reduce((a, i) => a + (i.total_cad_cents ?? 0), 0) } : sum(tab.statuses);
+  const going = sum(["prepared", "released", "scheduled"]);
+
+  const rail = (
+    <>
+      {data.about_to_pay_twice.map((f) => (
+        <div key={f.payment_ids.join()} className="banner negative" style={{ marginTop: 0 }}>
+          <div>
+            <div className="banner-title">About to pay {f.vendor_name} twice</div>
+            <div className="banner-body">#{f.invoice_number}: {f.payment_ids.join(" and ")} are both scheduled.
+              Stop one: {f.invoice_ids.map((id) => <Link key={id} to={`/invoices/${id}`} style={{ fontWeight: 600, marginRight: 6 }}>{id}</Link>)}</div>
+          </div>
+        </div>
+      ))}
+      <Panel title="Money going out">
+        <Stat label="Waiting to be released" value={money(data.summary.prepared?.total_cad_cents ?? 0)} />
+        <Stat label="Released or scheduled" value={money(sum(["released", "scheduled"]).total)} />
+        <Stat label="On hold" value={money(data.summary.held?.total_cad_cents ?? 0)} />
+        <div className="panel-stat" style={{ borderTop: "1px solid var(--surface-2)", marginTop: 6, paddingTop: 10 }}>
+          <span>Total</span><span>{money(going.total)}</span>
+        </div>
+      </Panel>
+      {credits.length > 0 && (
+        <Panel title="Credits waiting">
+          <div className="small muted">Deducted automatically from the next payment to {credits.map((c) => c.vendor_name).join(", ")}.</div>
+        </Panel>
+      )}
+      <p className="small muted" style={{ margin: "4px 6px" }}>Simulated EFT, cheque and virtual card. No real money moves.</p>
+    </>
+  );
 
   return (
-    <Page>
-      <PageTitle title="Payments" subtitle="Simulated EFT, cheque and virtual card. No real money moves." />
-
-      {data.about_to_pay_twice.map((f) => (
-        <Notice key={f.payment_ids.join()} tone="negative" title={`About to pay ${f.vendor_name} #${f.invoice_number} twice`}>
-          {f.message} Stop one before it goes out:{" "}
-          {f.invoice_ids.map((id) => <Link key={id} className="text-button" to={`/invoices/${id}`} style={{ marginRight: 8 }}>{id}</Link>)}
-        </Notice>
-      ))}
-
-      <div className="section" style={{ marginTop: 28, overflowX: "auto" }}>
-        <Segmented size="large" value={tab.key} onChange={(key) => setParams({ tab: String(key) })}
-          options={TABS.map((t) => ({ value: t.key, label: `${t.label} · ${count(t)}` }))} />
+    <Page rail={rail}>
+      <PageTitle title="Payments" />
+      <div style={{ marginTop: 22 }}>
+        <Chips<Tab> value={tab.key} onChange={(key) => setParams({ tab: key })}
+          options={TABS.map((t) => ({ value: t.key, label: t.label, count: count(t) }))} />
       </div>
-
-      <div className="section" style={{ marginTop: 28 }}>
+      <div style={{ marginTop: 30 }}>
         <Hero label={tab.hero} value={money(hero.total)}
-          caption={`${hero.count} ${plural(hero.count, isInvoices ? "invoice" : "payment", isInvoices ? "invoices" : "payments")}` +
-            (tab.key === "going" && data.summary.scheduled?.next_date ? ` · next on ${shortDate(data.summary.scheduled.next_date, today)}` : "")} />
+          meta={<span>{hero.count} {plural(hero.count, isInvoices ? "invoice" : "payment", isInvoices ? "invoices" : "payments")}
+            {tab.key === "going" && data.summary.scheduled?.next_date ? ` · next ${shortDate(data.summary.scheduled.next_date, today)}` : ""}</span>} />
       </div>
-
-      <Section title={tab.label} caption={isInvoices ? "Open one and press Pay: the payment is prepared and waits for release." : undefined}>
-        {isInvoices ? (
-          toPay.length === 0 ? <Empty title="Nothing waiting to be paid" /> : (
-            <div className="list">
-              {toPay.map((i) => (
-                <Row key={i.invoice_id} to={`/invoices/${i.invoice_id}`} avatar={<Avatar name={i.vendor_name} />}
-                  title={i.vendor_name ?? "—"} sub={`Invoice ${i.vendor_invoice_number} · ${shortDate(i.invoice_date, today)}`}
-                  end={<span className="row-amount">{money(i.total_cents, i.currency)}</span>} />
-              ))}
-            </div>
-          )
-        ) : data.payments.length === 0 ? <Empty title="Nothing here" /> : (
+      {data.about_to_pay_twice.length > 0 && tab.key === "going" && (
+        <Notice tone="negative" title="One invoice is scheduled twice">See the panel on the right before anything goes out.</Notice>
+      )}
+      <Section title={tab.label}>
+        {isInvoices ? (toPay.length === 0 ? <Empty title="Nothing waiting to be paid" /> : (
+          <div className="list">
+            {toPay.map((i) => (
+              <Row key={i.invoice_id} to={`/invoices/${i.invoice_id}`} avatar={<Avatar name={i.vendor_name} />}
+                title={i.vendor_name ?? "—"} sub={`Invoice ${i.vendor_invoice_number} · ${shortDate(i.invoice_date, today)}`}
+                end={<span className="row-amount">{money(i.total_cents, i.currency)}</span>} />
+            ))}
+          </div>
+        )) : data.payments.length === 0 ? <Empty title="Nothing here" /> : (
           <div className="list">{data.payments.map((p) => <PaymentRow key={p.payment_id} p={p} today={today} />)}</div>
-        )}
-        {isInvoices && credits.length > 0 && (
-          <Notice tone="info" title={`${credits.length} approved ${plural(credits.length, "credit note", "credit notes")} waiting`}>
-            They'll be deducted automatically from the next payment to {credits.map((c) => c.vendor_name).join(", ")}.
-          </Notice>
         )}
       </Section>
     </Page>

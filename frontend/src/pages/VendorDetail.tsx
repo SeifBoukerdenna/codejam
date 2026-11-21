@@ -1,24 +1,23 @@
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Button, Form, Input, Modal, Radio, Select } from "antd";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { send, type VendorDetail as Data } from "../api";
 import { ReasonModal, useRunner } from "../components/actions";
-import { Avatar, Hero, Loading, Notice, Page, Pill, Row, Section } from "../components/ui";
+import { Avatar, Hero, Loading, Notice, Page, Panel, Pill, Row, Section, Stat, Tiles } from "../components/ui";
 import { INVOICE_STATUS, METHOD, VENDOR_STATUS, longDate, money, plural, shortDate, statusOf } from "../format";
 import { useApi, useSession } from "../session";
 
 const CHANNEL: Record<string, string> = {
-  phone_callback_verified: "by phone, confirmed by calling back",
-  vendor_portal: "through the vendor portal",
-  email_request: "by email",
-  phone: "by phone",
+  phone_callback_verified: "by phone, confirmed by callback", vendor_portal: "through the vendor portal",
+  email_request: "by email", phone: "by phone",
 };
 
 function contractTerms(c: Data["contracts"][number]): string {
   const parts: string[] = [];
-  if (c.monthly_fee_cents !== null) parts.push(`${money(c.monthly_fee_cents, c.currency)} per month`);
-  if (c.hourly_rate_cap_cents !== null) parts.push(`up to ${money(c.hourly_rate_cap_cents, c.currency)}/hour`);
-  if (c.fuel_surcharge_cap_pct !== null) parts.push(`fuel surcharge up to ${c.fuel_surcharge_cap_pct}%`);
+  if (c.monthly_fee_cents !== null) parts.push(`${money(c.monthly_fee_cents, c.currency)}/month`);
+  if (c.hourly_rate_cap_cents !== null) parts.push(`≤ ${money(c.hourly_rate_cap_cents, c.currency)}/hour`);
+  if (c.fuel_surcharge_cap_pct !== null) parts.push(`fuel ≤ ${c.fuel_surcharge_cap_pct}%`);
   if (c.not_to_exceed_monthly_cents !== null) parts.push(`max ${money(c.not_to_exceed_monthly_cents, c.currency)}/month`);
   return parts.join(" · ");
 }
@@ -38,96 +37,96 @@ export default function VendorDetail() {
   const act = data.actions;
   const status = statusOf(VENDOR_STATUS, v.status);
   const pending = data.bank_changes.find((b) => b.pending);
+  const primary = act.approve
+    ? { label: "Approve vendor", perm: act.approve, onClick: () => run(() => send("POST", `/vendors/${v.vendor_id}/approve`), "Vendor approved", reload) }
+    : pending?.verify ? { label: "Verify bank change by phone", perm: pending.verify, onClick: () => setVerifying(pending.change_id) } : null;
 
-  return (
-    <Page>
-      <button className="back-link" onClick={() => navigate(-1)}>← Back</button>
-      <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-        <Avatar name={v.legal_name} size="large" />
+  const rail = (
+    <>
+      <Panel>
+        <Pill tone={pending ? "negative" : status.tone}>{pending ? "Payments on hold" : status.label}</Pill>
+        <div style={{ fontWeight: 600, marginTop: 10, fontSize: 16 }}>
+          {pending ? "Bank change not verified" : v.status === "pending_review" ? "Waiting for a finance manager"
+            : v.status === "on_hold" ? "Nothing can be paid" : "Can be paid"}
+        </div>
+        <div className="panel-actions">
+          {primary && <Button type="primary" size="large" shape="round" disabled={!primary.perm.allowed} onClick={primary.onClick}>{primary.label}</Button>}
+          {act.request_bank_change?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setChanging(true)}>Change bank details</Button>}
+          {act.hold?.allowed && <Button className="danger-soft" size="large" shape="round" onClick={() => setHolding(true)}>Put on hold</Button>}
+          {act.release_hold?.allowed && <Button className="soft" size="large" shape="round"
+            onClick={() => run(() => send("POST", `/vendors/${v.vendor_id}/hold`, { release: true }), "Hold released", reload)}>Release hold</Button>}
+        </div>
+        {primary && !primary.perm.allowed && <div className="reason">{primary.perm.reason}</div>}
+      </Panel>
+      <Panel title="Bank account">
+        <Stat label="Institution" value={v.bank_institution ?? "—"} />
+        <Stat label="Transit" value={v.bank_transit ?? "—"} />
+        <Stat label="Account" value={v.bank_account_last4 ? `••••${v.bank_account_last4}` : "None"} />
+        <Stat label="Pays by" value={METHOD[v.preferred_payment_method ?? ""] ?? "—"} />
+      </Panel>
+    </>
+  );
+
+  const head = (
+    <>
+      <button className="link-button" onClick={() => navigate(-1)} style={{ marginBottom: 22 }}><ArrowLeftOutlined /> Back</button>
+      <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 26 }}>
+        <Avatar name={v.legal_name} size="lg" />
         <div>
-          <h1 className="page-title" style={{ fontSize: 36, margin: 0 }}>{v.legal_name}</h1>
-          <div className="hero-caption">{v.category} · {v.province_or_state ?? v.country} · {v.vendor_id}
-            <Pill tone={status.tone}>{status.label}</Pill></div>
+          <h1 className="page-title" style={{ fontSize: 26 }}>{v.legal_name}</h1>
+          <div className="muted small">{v.category} · {v.province_or_state ?? v.country} · {v.vendor_id}</div>
         </div>
       </div>
 
-      <div className="section" style={{ marginTop: 24, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
-        {act.approve && (
-          <Button type="primary" shape="round" size="large" disabled={!act.approve.allowed}
-            onClick={() => run(() => send("POST", `/vendors/${v.vendor_id}/approve`), "Vendor approved", reload)}>
-            Approve vendor
-          </Button>
-        )}
-        {pending?.verify && (
-          <Button type={act.approve ? "default" : "primary"} shape="round" size="large" disabled={!pending.verify.allowed}
-            onClick={() => setVerifying(pending.change_id)}>Verify bank change by phone</Button>
-        )}
-        {act.hold?.allowed && <button className="text-button" onClick={() => setHolding(true)}>Put on hold</button>}
-        {act.release_hold?.allowed && <button className="text-button"
-          onClick={() => run(() => send("POST", `/vendors/${v.vendor_id}/hold`, { release: true }), "Hold released", reload)}>Release hold</button>}
-        {act.request_bank_change?.allowed && <button className="text-button" onClick={() => setChanging(true)}>Change bank details</button>}
-      </div>
-      {act.approve && !act.approve.allowed && <p className="muted small">{act.approve.reason}</p>}
-      {pending?.verify && !pending.verify.allowed && <p className="muted small">{pending.verify.reason}</p>}
+      <Hero label="Paid this year" value={money(data.paid_this_year.cents)}
+        meta={<span>{data.paid_this_year.count} {plural(data.paid_this_year.count, "payment", "payments")}</span>} />
+    </>
+  );
+
+  return (
+    <Page rail={rail} railFirst head={head}>
 
       {pending && (
         <Notice tone="negative" title="Don't pay this vendor until the bank change is verified">
-          The bank account was changed on {longDate(pending.changed_at)} {CHANNEL[pending.request_channel] ?? pending.request_channel}
-          {pending.changed_by_name ? ` (entered by ${pending.changed_by_name})` : ""}, and nobody has confirmed it by calling the
-          vendor. Someone else must call them at the number on file from before the change. Payments stay on hold until then.
+          Changed {longDate(pending.changed_at)} {CHANNEL[pending.request_channel] ?? pending.request_channel}
+          {pending.changed_by_name ? `, entered by ${pending.changed_by_name}` : ""}. Someone else must call the vendor at the
+          number on file from before the change.
         </Notice>
       )}
-      {v.status === "pending_review" && (
-        <Notice tone="warning" title="This vendor is still being reviewed">
-          Its invoices need an extra finance manager approval (P05) and can't be paid until a finance manager approves it.
-        </Notice>
-      )}
-      {v.status === "on_hold" && <Notice tone="negative" title="This vendor is on hold">
-        {v.status_reason ? `Reason: ${v.status_reason}. ` : ""}Nothing can be approved or paid for it.</Notice>}
+      {v.status === "on_hold" && v.status_reason && <Notice tone="negative" title="On hold">{v.status_reason}</Notice>}
       {data.lookalike_of && (
         <Notice tone="negative" title={`Looks like ${data.lookalike_of.legal_name}, but isn't`}>
-          Similar name to <Link to={`/vendors/${data.lookalike_of.vendor_id}`}>{data.lookalike_of.legal_name}</Link>, which we've
-          paid {data.lookalike_of.payments} times, with {data.lookalike_of.reasons.filter((r) => r.startsWith("different")).join(", ")}.
-          Treat as a possible impersonation.
+          We've paid <Link to={`/vendors/${data.lookalike_of.vendor_id}`} style={{ fontWeight: 600 }}>{data.lookalike_of.legal_name}</Link>{" "}
+          {data.lookalike_of.payments} times. This one has a {data.lookalike_of.reasons.filter((r) => r.startsWith("different"))
+            .map((r) => r.replace("different ", "")).join(", ")} that don't match.
         </Notice>
       )}
       {data.similar.filter((s) => s.kind === "duplicate").map((s) => (
-        <Notice key={s.vendor_id} tone="warning" title={`Possibly the same company as ${s.legal_name} (${s.vendor_id})`}>
-          {s.reasons.join(", ")}. Duplicate vendor records let the same invoice be paid twice under two names.{" "}
-          <Link to={`/vendors/${s.vendor_id}`}>Open {s.vendor_id}</Link>
+        <Notice key={s.vendor_id} tone="warning" title={`Possibly the same company as ${s.legal_name}`}>
+          {s.reasons.join(", ")}. <Link to={`/vendors/${s.vendor_id}`} style={{ fontWeight: 600 }}>Open {s.vendor_id}</Link>
         </Notice>
       ))}
 
-      <div className="section">
-        <Hero label="Paid this year" value={money(data.paid_this_year.cents)}
-          caption={`${data.paid_this_year.count} ${plural(data.paid_this_year.count, "payment", "payments")}`} />
-      </div>
-
       <Section title="Details">
-        <dl className="kv">
-          <dt>Pays by</dt><dd>{METHOD[v.preferred_payment_method ?? ""] ?? "—"}{v.payment_terms_days ? ` · net ${v.payment_terms_days} days` : ""}</dd>
-          <dt>Bank account</dt>
-          <dd>{v.bank_account_last4 ? `Inst. ${v.bank_institution} · Transit ${v.bank_transit} · ••••${v.bank_account_last4}` : "None on file"}</dd>
-          <dt>GST/HST number</dt><dd>{v.gst_hst_number ?? "None on file"}</dd>
-          {v.qst_number && <><dt>QST number</dt><dd>{v.qst_number}</dd></>}
-          <dt>Billing email</dt><dd>{v.ap_contact_email ?? "—"}</dd>
-          <dt>Needs a PO</dt><dd>{v.requires_po ? "Yes" : "No"}</dd>
-          <dt>Address</dt><dd>{v.address ?? "—"}</dd>
-        </dl>
+        <Tiles items={[
+          { label: "GST/HST number", value: v.gst_hst_number ?? "None on file" },
+          { label: "QST number", value: v.qst_number ?? "—" },
+          { label: "Billing email", value: v.ap_contact_email ?? "—" },
+          { label: "Payment terms", value: v.payment_terms_days ? `Net ${v.payment_terms_days} days` : "—" },
+          { label: "Needs a purchase order", value: v.requires_po ? "Yes" : "No" },
+          { label: "Address", value: v.address ?? "—" },
+        ]} />
       </Section>
 
       {data.bank_changes.length > 0 && (
-        <Section title="Bank account changes" caption="A change only counts once someone has called the vendor back to confirm it.">
+        <Section title="Bank changes">
           <div className="list">
             {data.bank_changes.map((b) => (
-              <Row key={b.change_id}
-                title={`${b.old_account_last4 ? `••••${b.old_account_last4}` : "none"} → ••••${b.new_account_last4}`}
+              <Row key={b.change_id} title={`${b.old_account_last4 ? `••••${b.old_account_last4}` : "none"} → ••••${b.new_account_last4}`}
                 sub={`${shortDate(b.changed_at, today)} · ${CHANNEL[b.request_channel] ?? b.request_channel}` +
-                  (b.changed_by_name ? ` · entered by ${b.changed_by_name}` : "") +
                   (b.callback_by_name ? ` · ${b.callback_by_name} called ${b.callback_phone}` : "")}
                 end={b.verified_by_callback ? <Pill tone="positive">Verified</Pill>
-                  : b.callback_outcome === "rejected" ? <Pill tone="negative">Vendor denied it</Pill>
-                    : <Pill tone="negative">Not verified</Pill>} />
+                  : b.callback_outcome === "rejected" ? <Pill tone="negative">Denied</Pill> : <Pill tone="negative">Not verified</Pill>} />
             ))}
           </div>
         </Section>
@@ -137,8 +136,7 @@ export default function VendorDetail() {
         <Section title="Contracts">
           <div className="list">
             {data.contracts.map((c) => (
-              <Row key={c.contract_id} title={`${c.contract_id} · ${c.description}`}
-                sub={`${contractTerms(c)} · ends ${shortDate(c.end_date, today)}`}
+              <Row key={c.contract_id} title={c.description} sub={`${c.contract_id} · ${contractTerms(c)} · ends ${shortDate(c.end_date, today)}`}
                 end={c.status === "active" ? <Pill tone="positive">Active</Pill> : <Pill tone="negative">Expired</Pill>} />
             ))}
           </div>
@@ -146,13 +144,12 @@ export default function VendorDetail() {
       )}
 
       {data.purchase_orders.length > 0 && (
-        <Section title="Purchase orders" caption="What's left is the PO amount minus invoices charged to it, tax included.">
+        <Section title="Purchase orders">
           <div className="list">
             {data.purchase_orders.map((po) => (
-              <Row key={po.po_id} title={`${po.po_id} · ${po.status.replace("_", " ")}`}
-                sub={`${po.description} · issued ${shortDate(po.issue_date, today)}`}
-                end={<><span className="row-amount">{money(po.total_amount_cents - po.invoiced_cents)} left</span>
-                  <span className="muted small">of {money(po.total_amount_cents)}</span></>} />
+              <Row key={po.po_id} title={po.po_id} sub={`${po.description} · ${po.status.replace("_", " ")}`}
+                end={<><span className="row-amount">{money(po.total_amount_cents - po.invoiced_cents)}</span>
+                  <span className="small muted">left of {money(po.total_amount_cents, "CAD", true)}</span></>} />
             ))}
           </div>
         </Section>
@@ -187,10 +184,10 @@ function BankChangeModal({ open, vendorId, onClose, onDone }: { open: boolean; v
   const run = useRunner();
   return (
     <Modal open={open} title="New bank details" okText="Record the request" onCancel={onClose} destroyOnHidden
-      okButtonProps={{ shape: "round" }} cancelButtonProps={{ shape: "round" }}
+      okButtonProps={{ shape: "round", size: "large" }} cancelButtonProps={{ shape: "round", size: "large", className: "soft" }}
       onOk={() => form.validateFields().then((values) => run(() => send("POST", `/vendors/${vendorId}/bank-changes`, values),
         "Recorded. Payments are held until someone verifies it by phone.", onDone).then((ok) => ok && onClose()))}>
-      <p className="muted">Nothing changes on the vendor yet. The new account only takes effect after a callback.</p>
+      <p className="muted">Nothing changes until someone else verifies it by calling the vendor.</p>
       <Form form={form} layout="vertical" initialValues={{ channel: "email_request" }} requiredMark={false}>
         <div style={{ display: "flex", gap: 12 }}>
           <Form.Item name="institution" label="Institution" rules={[{ required: true, len: 3 }]} style={{ width: 110 }}><Input /></Form.Item>
@@ -198,8 +195,7 @@ function BankChangeModal({ open, vendorId, onClose, onDone }: { open: boolean; v
           <Form.Item name="account" label="Account" rules={[{ required: true }]} style={{ flex: 1 }}><Input /></Form.Item>
         </div>
         <Form.Item name="channel" label="How the request came in">
-          <Select options={[{ value: "email_request", label: "Email" }, { value: "phone", label: "Phone" },
-            { value: "vendor_portal", label: "Vendor portal" }]} />
+          <Select options={[{ value: "email_request", label: "Email" }, { value: "phone", label: "Phone" }, { value: "vendor_portal", label: "Vendor portal" }]} />
         </Form.Item>
       </Form>
     </Modal>
@@ -211,12 +207,11 @@ function CallbackModal({ changeId, onClose, onDone }: { changeId: string | null;
   const run = useRunner();
   return (
     <Modal open={!!changeId} title="Verify by calling the vendor" okText="Save the call" onCancel={onClose} destroyOnHidden
-      okButtonProps={{ shape: "round" }} cancelButtonProps={{ shape: "round" }}
+      okButtonProps={{ shape: "round", size: "large" }} cancelButtonProps={{ shape: "round", size: "large", className: "soft" }}
       onOk={() => form.validateFields().then((values) => run(() => send("POST", `/bank-changes/${changeId}/verify`, values),
-        values.outcome === "confirmed" ? "Verified. The new details are in effect." : "Recorded: the vendor denied it.", onDone)
+        values.outcome === "confirmed" ? "Verified. The new details are live." : "Recorded: the vendor denied it.", onDone)
         .then((ok) => ok && onClose()))}>
-      <p className="muted">Call the number we had on file <b>before</b> the change, never one from the email or invoice
-        that asked for it. Ask the vendor to confirm the new account.</p>
+      <p className="muted">Call the number we had on file <b>before</b> the change, never one from the email that asked for it.</p>
       <Form form={form} layout="vertical" initialValues={{ outcome: "confirmed" }} requiredMark={false}>
         <Form.Item name="phone" label="Number you called" rules={[{ required: true }]}><Input placeholder="e.g. 604-555-0142" /></Form.Item>
         <Form.Item name="outcome" label="What the vendor said">

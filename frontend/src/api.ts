@@ -67,6 +67,7 @@ export type PaymentRow = {
   currency: string;
   amount_cents: number;
   amount_cad_cents: number;
+  credit_applied_cents: number;
   reference: string | null;
   hold_reason: string | null;
 };
@@ -78,6 +79,7 @@ export type HomeData = {
   paid_this_year_cad_cents: number;
   payments_this_year: number;
   paid_by_month: MonthTotal[];
+  paid_daily: { date: string; total_cad_cents: number; count: number }[];
   todo: Record<"emails_to_sort" | "needs_review" | "on_hold" | "waiting_for_me" | "payments_to_release"
     | "approved_to_pay" | "payments_held", number>;
   scheduled: { count: number; total_cad_cents: number };

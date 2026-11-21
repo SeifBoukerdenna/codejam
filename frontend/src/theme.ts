@@ -1,29 +1,34 @@
 import type { ThemeConfig } from "antd";
 
-// Ant Design restyled to match styles.css: black primary, soft greys, no shadows, rounded everything.
-// Change a colour here and in styles.css' :root together.
+// Ant Design restyled to match styles.css. Keep the two in step.
 export const theme: ThemeConfig = {
   token: {
-    fontFamily: '"Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif',
+    fontFamily: '"Inter Tight Variable", system-ui, -apple-system, "Segoe UI", sans-serif',
     fontSize: 15,
     colorPrimary: "#111111",
-    colorInfo: "#1f63b5",
-    colorSuccess: "#0f7b3d",
-    colorWarning: "#8f5400",
-    colorError: "#c0302f",
+    colorInfo: "#1d5fb3",
+    colorSuccess: "#0b7a43",
+    colorWarning: "#8a5300",
+    colorError: "#b42318",
     colorText: "#111111",
-    colorTextSecondary: "#52514e",
-    colorBorder: "#e3e3e0",
-    colorBorderSecondary: "#ececea",
+    colorTextSecondary: "#5f5f5a",
+    colorTextPlaceholder: "#8b8b86",
+    colorBorder: "#e4e4e1",
+    colorBorderSecondary: "#ebebe8",
     colorBgLayout: "#ffffff",
+    colorBgContainer: "#ffffff",
     borderRadius: 12,
-    controlHeight: 40,
-    boxShadowSecondary: "0 6px 20px rgba(0, 0, 0, 0.08)",
+    borderRadiusLG: 20,
+    controlHeight: 44,
+    controlHeightLG: 50,
+    boxShadowSecondary: "0 12px 40px rgba(0, 0, 0, 0.12)",
   },
   components: {
-    Button: { primaryShadow: "none", defaultShadow: "none", fontWeight: 600 },
-    Segmented: { trackBg: "#f2f2f0", itemSelectedBg: "#ffffff" },
-    Input: { activeShadow: "none" },
-    Select: { optionSelectedBg: "#f2f2f0" },
+    Button: { primaryShadow: "none", defaultShadow: "none", fontWeight: 650, contentFontSizeLG: 16 },
+    Input: { activeShadow: "none", colorBgContainer: "#f6f6f4", colorBorder: "transparent", hoverBorderColor: "#d9d9d5" },
+    Select: { optionSelectedBg: "#f6f6f4", optionActiveBg: "#f6f6f4" },
+    Modal: { borderRadiusLG: 24 },
+    Drawer: { colorBgElevated: "#ffffff" },
+    Message: { contentBg: "#111111", colorText: "#ffffff" },
   },
 };

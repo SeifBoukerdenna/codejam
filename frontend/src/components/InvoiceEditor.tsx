@@ -48,7 +48,7 @@ export default function InvoiceEditor({ data, open, onClose, onSaved }: {
   const two = { display: "flex", gap: 12 } as const;
   return (
     <Drawer open={open} onClose={onClose} size={600} title={null} destroyOnHidden>
-      <h2 className="page-title" style={{ fontSize: 30 }}>Correct this invoice</h2>
+      <h2 className="drawer-title">Correct this invoice</h2>
       <p className="muted">Compare with the original document. Every change is recorded with your name.</p>
       <Form form={form} layout="vertical" onFinish={save} requiredMark={false} style={{ marginTop: 16 }}>
         <Form.Item name="vendor_id" label="Vendor">
@@ -78,14 +78,14 @@ export default function InvoiceEditor({ data, open, onClose, onSaved }: {
           <Form.Item name="pst_qst_cents" label="PST / QST" style={{ flex: 1 }}><Input prefix="$" /></Form.Item>
           <Form.Item name="total_cents" label="Total" style={{ flex: 1 }}><Input prefix="$" /></Form.Item>
         </div>
-        <h3 className="section-title" style={{ fontSize: 16, margin: "8px 0 12px" }}>As printed on the invoice</h3>
+        <h3 className="section-title" style={{ fontSize: 16, margin: "18px 0 12px" }}>As printed on the invoice</h3>
         <Form.Item name="vendor_gst" label="GST/HST number"><Input /></Form.Item>
         <div style={two}>
           <Form.Item name="bank_institution" label="Institution" style={{ width: 110 }}><Input /></Form.Item>
           <Form.Item name="bank_transit" label="Transit" style={{ width: 130 }}><Input /></Form.Item>
           <Form.Item name="bank_account" label="Account" style={{ flex: 1 }}><Input /></Form.Item>
         </div>
-        <h3 className="section-title" style={{ fontSize: 16, margin: "8px 0 12px" }}>Ledger account per line</h3>
+        <h3 className="section-title" style={{ fontSize: 16, margin: "18px 0 12px" }}>Ledger account per line</h3>
         {data.lines.map((l) => (
           <Form.Item key={l.line_no} name={`gl_${l.line_no}`} label={l.description} extra={l.coding_reason}>
             <Select showSearch optionFilterProp="label"
@@ -93,7 +93,7 @@ export default function InvoiceEditor({ data, open, onClose, onSaved }: {
           </Form.Item>
         ))}
         <Form.Item name="reason" label="Why (optional)"><Input placeholder="e.g. Corrected the transit from the original scan" /></Form.Item>
-        <Button type="primary" shape="round" size="large" htmlType="submit" block>Save and re-check</Button>
+        <Button type="primary" shape="round" size="large" htmlType="submit" style={{ marginTop: 8 }} block>Save and re-check</Button>
       </Form>
     </Drawer>
   );

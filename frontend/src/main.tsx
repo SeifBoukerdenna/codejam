@@ -1,6 +1,5 @@
 // Fonts are bundled with the app (not loaded from Google), so the demo looks the same with no internet.
-import "@fontsource-variable/inter";
-import "@fontsource/instrument-serif";
+import "@fontsource-variable/inter-tight";
 import "./styles.css";
 
 import { App as AntApp, ConfigProvider } from "antd";

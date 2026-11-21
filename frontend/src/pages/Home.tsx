@@ -1,33 +1,32 @@
+import { CheckCircleFilled, RightOutlined } from "@ant-design/icons";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import type { HomeData, User } from "../api";
-import MonthlyBars from "../components/MonthlyBars";
+import type { Findings, HomeData, User } from "../api";
+import PaidChart, { cumulative, inRange, type Point, type Range } from "../components/PaidChart";
 import PaymentRow from "../components/PaymentRow";
-import { Hero, Loading, Page, PageTitle, Section } from "../components/ui";
-import { firstName, longDate, money, plural, type Tone } from "../format";
+import { Hero, Loading, Page, Panel, Section } from "../components/ui";
+import { firstName, longDate, money, monthName, plural } from "../format";
 import { useApi, useSession } from "../session";
 
-type Task = { count: number; label: string; to: string; tone: Tone };
+type Task = { count: number; label: string; to: string };
 
 // What each role is responsible for, so Home only shows a person their own work.
-function tasksFor(user: User | null, todo: HomeData["todo"]): Task[] {
+function tasksFor(user: User | null, t: HomeData["todo"]): Task[] {
   if (!user) return [];
-  const t = todo;
   const all: Record<string, Task> = {
-    emails: { count: t.emails_to_sort, label: plural(t.emails_to_sort, "email to sort", "emails to sort"), to: "/inbox", tone: "neutral" },
-    review: { count: t.needs_review, label: plural(t.needs_review, "invoice to review", "invoices to review"), to: "/inbox?tab=review", tone: "warning" },
-    hold: { count: t.on_hold, label: plural(t.on_hold, "invoice on hold", "invoices on hold"), to: "/inbox?tab=hold", tone: "negative" },
-    approve: { count: t.waiting_for_me, label: plural(t.waiting_for_me, "invoice to approve", "invoices to approve"), to: "/approvals", tone: "warning" },
-    release: { count: t.payments_to_release, label: plural(t.payments_to_release, "payment to release", "payments to release"), to: "/payments?tab=prepared", tone: "warning" },
-    pay: { count: t.approved_to_pay, label: plural(t.approved_to_pay, "approved invoice to pay", "approved invoices to pay"), to: "/payments?tab=approved", tone: "neutral" },
-    held: { count: t.payments_held, label: plural(t.payments_held, "payment held", "payments held"), to: "/payments?tab=held", tone: "negative" },
+    emails: { count: t.emails_to_sort, label: plural(t.emails_to_sort, "Email to sort", "Emails to sort"), to: "/inbox" },
+    review: { count: t.needs_review, label: plural(t.needs_review, "Invoice to review", "Invoices to review"), to: "/inbox?tab=review" },
+    hold: { count: t.on_hold, label: plural(t.on_hold, "Invoice on hold", "Invoices on hold"), to: "/inbox?tab=hold" },
+    approve: { count: t.waiting_for_me, label: plural(t.waiting_for_me, "Invoice to approve", "Invoices to approve"), to: "/approvals" },
+    release: { count: t.payments_to_release, label: plural(t.payments_to_release, "Payment to release", "Payments to release"), to: "/payments?tab=prepared" },
+    pay: { count: t.approved_to_pay, label: plural(t.approved_to_pay, "Approved invoice to pay", "Approved invoices to pay"), to: "/payments?tab=approved" },
+    held: { count: t.payments_held, label: plural(t.payments_held, "Payment held", "Payments held"), to: "/payments?tab=held" },
   };
   const byRole: Record<string, string[]> = {
     ap_clerk: ["emails", "review", "hold", "pay", "held"],
     approver: ["approve"],
     finance_manager: ["approve", "release", "held", "hold"],
     controller_admin: ["approve", "release", "held", "hold"],
-    employee: [],
-    auditor: [],
   };
   return (byRole[user.role] ?? []).map((k) => all[k]).filter((task) => task.count > 0);
 }
@@ -37,53 +36,79 @@ function greeting(): string {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
+const RANGE_WORDS: Record<Range, string> = { "1M": "in the last month", "3M": "in the last 3 months", YTD: "this year" };
+
 export default function Home() {
   const { user, today } = useSession();
   const { data, error } = useApi<HomeData>("/home");
+  const findings = useApi<Findings>("/findings");
+  const [range, setRange] = useState<Range>("YTD");
+  const [hover, setHover] = useState<Point | null>(null);
+  const series = useMemo(() => (data ? cumulative(data.paid_daily, data.today) : []), [data]);
+  const shown = useMemo(() => (data ? inRange(series, range, data.today) : []), [series, range, data]);
   if (!data) return <Loading error={error} />;
 
   const tasks = tasksFor(user, data.todo);
+  const total = series.at(-1)?.cents ?? 0;
+  const change = (shown.at(-1)?.cents ?? 0) - (shown[0]?.cents ?? 0);
+  const thisMonth = data.paid_by_month.at(-1);
 
-  return (
-    <Page>
-      <PageTitle
-        title={user ? `${greeting()}, ${firstName(user.full_name)}` : "Welcome to Harborline AP"}
-        subtitle={user ? `${user.title} · ${user.department}` : "Choose who you are in the top right to see your work."}
-      />
-
+  const rail = (
+    <>
       {user && (
-        <Section title="For you">
-          {tasks.length > 0 ? (
-            <div className="tasks">
+        <Panel title="For you">
+          {tasks.length ? (
+            <div className="list">
               {tasks.map((t) => (
-                <Link key={t.label} to={t.to} className={`task ${t.tone}`}>
-                  <div className="task-count">{t.count}</div>
-                  <div className="task-label">{t.label}</div>
+                <Link key={t.label} to={t.to} className="row">
+                  <div className="row-main"><div className="row-title">{t.label}</div></div>
+                  <span className="nav-count">{t.count}</span>
+                  <RightOutlined style={{ fontSize: 11, color: "var(--ink-3)" }} />
                 </Link>
               ))}
             </div>
           ) : (
-            <p className="muted">
-              {user.role === "auditor" ? "You have read-only access to everything." : "You're all caught up."}
-            </p>
+            <div className="muted"><CheckCircleFilled style={{ color: "var(--green)", marginRight: 8 }} />
+              {user.role === "auditor" ? "Read-only access." : "You're all caught up."}</div>
           )}
-        </Section>
+        </Panel>
       )}
+      {findings.data && findings.data.overpaid_cad_cents > 0 && (
+        <Link to="/activity" className="panel" style={{ display: "block" }}>
+          <div className="hero-label">Paid twice this year</div>
+          <div style={{ fontSize: 28, fontWeight: 650, letterSpacing: "-0.03em" }} className="num">
+            {money(findings.data.overpaid_cad_cents)}
+          </div>
+          <div className="small muted" style={{ marginTop: 4 }}>
+            {findings.data.double_payments.filter((f) => f.kind !== "about_to_pay_twice").length} double payments to recover <RightOutlined style={{ fontSize: 10 }} />
+          </div>
+        </Link>
+      )}
+      <Panel title={thisMonth ? `${monthName(thisMonth.month, true)} so far` : "This month"}>
+        <div className="panel-stat"><span>Paid out</span><span>{money(thisMonth?.total_cad_cents ?? 0)}</span></div>
+        <div className="panel-stat"><span>Scheduled to go out</span><span>{money(data.scheduled.total_cad_cents)}</span></div>
+        <div className="panel-stat"><span>Invoices on hold</span><span>{data.todo.on_hold}</span></div>
+      </Panel>
+    </>
+  );
 
-      <div className="section">
-        <Hero
-          label="Paid to vendors this year"
-          value={money(data.paid_this_year_cad_cents)}
-          caption={`${data.payments_this_year} payments · as of ${longDate(data.today)}`}
-        />
-        <MonthlyBars data={data.paid_by_month} today={data.today} />
-      </div>
+  return (
+    <Page rail={rail}>
+      <p className="muted" style={{ margin: "0 0 18px", fontWeight: 500 }}>
+        {user ? `${greeting()}, ${firstName(user.full_name)}` : "Choose who you are to see your work"}
+      </p>
+      <Hero
+        label="Paid to vendors this year"
+        value={money(hover ? hover.cents : total)}
+        meta={hover
+          ? <span>As of {longDate(hover.date)}</span>
+          : range === "YTD"
+            ? <span>{data.payments_this_year} payments · <b style={{ color: "var(--ink)" }}>{money(thisMonth?.total_cad_cents ?? 0)}</b> so far this month</span>
+            : <span><b style={{ color: "var(--ink)" }}>{money(change)}</b> {RANGE_WORDS[range]}</span>}
+      />
+      <PaidChart points={shown} range={range} onRange={setRange} onPoint={setHover} />
 
-      <Section
-        title="Going out next"
-        extra={<Link to="/payments">See all</Link>}
-        caption={`${money(data.scheduled.total_cad_cents)} across ${data.scheduled.count} scheduled ${plural(data.scheduled.count, "payment", "payments")}`}
-      >
+      <Section title="Going out next" extra={<Link to="/payments?tab=going">See all</Link>}>
         <div className="list">
           {data.upcoming.map((p) => <PaymentRow key={p.payment_id} p={p} today={today} />)}
         </div>
