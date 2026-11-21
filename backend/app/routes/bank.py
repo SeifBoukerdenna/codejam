@@ -22,7 +22,13 @@ def _bank_fee_account(conn) -> str:
 def bank_page(conn=Depends(get_conn), user=Depends(current_user)):
     result = reconcile.check_statement(conn)
     signer = user["full_name"] if user else "Accounts Payable"
+    # Count + amount per kind of open work, so the page shows them without adding anything up itself.
+    todo_totals = {todo: {"count": sum(1 for l in result["lines"] if l["todo"] == todo),
+                          "cents": sum(l["at_stake_cents"] if todo == "ask_bank" else l["amount_cents"]
+                                       for l in result["lines"] if l["todo"] == todo)}
+                   for todo in ("ask_bank", "book_fee", "mark_cashed")}
     return {**result, "letter": reconcile.letter_to_bank(result, signer), "bank_fee_account": _bank_fee_account(conn),
+            "todo_totals": todo_totals, "in_question_cents": result["unexplained_cents"] + result["waiting_cents"],
             "can_act": can(conn, user, "bank.reconcile").as_dict()}
 
 

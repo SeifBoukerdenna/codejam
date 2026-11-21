@@ -48,7 +48,7 @@ export default function Fool() {
 
   const rail = (
     <Panel title="Make your own">
-      <p className="muted" style={{ margin: "0 0 12px", fontSize: 14 }}>
+      <p className="muted small m-0 mb-3">
         Take a real invoice, change anything you like, and upload it.
       </p>
       {d.samples.length > 0 && (
@@ -60,7 +60,7 @@ export default function Fool() {
                 <div className="row-title">{s.vendor_name}</div>
                 <div className="row-sub">{money(s.total_cents, s.currency)}</div>
               </div>
-              <DownloadOutlined style={{ color: "var(--ink-3)" }} />
+              <DownloadOutlined className="ink-3" aria-label="Download" />
             </a>
           ))}
         </div>
@@ -86,7 +86,7 @@ export default function Fool() {
   const head = (
     <>
       <PageTitle title="Try to fool us" />
-      <div style={{ marginTop: 26 }}>
+      <div className="mt-5">
         {d.finished > 0 ? (
           <Hero label="Fakes caught" value={`${d.caught} of ${d.finished}`}
             meta={<span>{d.caught === d.finished ? "None of them could be paid." : `${d.finished - d.caught} got through.`}</span>} />
@@ -116,11 +116,11 @@ export default function Fool() {
               <Card key={s.key} title={s.title} foot={
                 a && a.result !== "reading" ? (
                   <div className="card-result">
-                    <div className={`check-icon ${RESULT[a.result].tone}`}>{RESULT[a.result].icon}</div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className={`check-icon ${RESULT[a.result].tone}`} aria-hidden>{RESULT[a.result].icon}</div>
+                    <div className="grow">
                       <div className="card-result-title">{RESULT[a.result].label}</div>
                       <div className="card-result-text">{a.reasons[0] ?? "No check stopped it."}</div>
-                      <div style={{ display: "flex", gap: 16, alignItems: "baseline" }}>
+                      <div className="card-result-links">
                         {linkTo(a) && <Link className="card-result-link" to={linkTo(a)!}>See how</Link>}
                         {allowed && <button className="link-button" onClick={() => tryIt(s.key)}>Try again</button>}
                       </div>

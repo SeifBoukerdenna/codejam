@@ -71,7 +71,7 @@ export default function VendorForm(props: {
         </Notice>
       ))}
 
-      <Form form={form} layout="vertical" onFinish={submit} style={{ marginTop: 20 }} requiredMark={false}>
+      <Form form={form} layout="vertical" onFinish={submit} className="mt-5" requiredMark={false}>
         <Form.Item name="legal_name" label="Legal name" rules={[{ required: true, message: "Required" }]}><Input /></Form.Item>
         <Form.Item name="category" label="Category" rules={[{ required: true, message: "Required" }]}>
           <Select showSearch options={(ref?.categories ?? []).map((c) => ({ value: c, label: c }))} />
@@ -82,28 +82,28 @@ export default function VendorForm(props: {
         </Form.Item>
         <Form.Item name="ap_contact_email" label="Billing email"><Input /></Form.Item>
         <Form.Item name="address" label="Address"><Input /></Form.Item>
-        <div style={{ display: "flex", gap: 12 }}>
-          <Form.Item name="province_or_state" label="Province / state" style={{ flex: 1 }}><Input maxLength={2} /></Form.Item>
-          <Form.Item name="country" label="Country" style={{ flex: 1 }}>
+        <div className="form-row">
+          <Form.Item name="province_or_state" label="Province / state"><Input maxLength={2} /></Form.Item>
+          <Form.Item name="country" label="Country">
             <Select options={[{ value: "CA", label: "Canada" }, { value: "US", label: "United States" }]} />
           </Form.Item>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <Form.Item name="gst_hst_number" label="GST/HST number" style={{ flex: 1 }}><Input placeholder="123456789RT0001" /></Form.Item>
-          <Form.Item name="qst_number" label="QST number" style={{ flex: 1 }}><Input /></Form.Item>
+        <div className="form-row">
+          <Form.Item name="gst_hst_number" label="GST/HST number"><Input placeholder="123456789RT0001" /></Form.Item>
+          <Form.Item name="qst_number" label="QST number"><Input /></Form.Item>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <Form.Item name="bank_institution" label="Institution" style={{ width: 110 }}><Input maxLength={3} /></Form.Item>
-          <Form.Item name="bank_transit" label="Transit" style={{ width: 130 }}><Input maxLength={5} /></Form.Item>
-          <Form.Item name="bank_account" label="Account" style={{ flex: 1 }}><Input /></Form.Item>
+        <div className="form-row">
+          <Form.Item name="bank_institution" label="Institution" className="field-sm"><Input maxLength={3} /></Form.Item>
+          <Form.Item name="bank_transit" label="Transit" className="field-md"><Input maxLength={5} /></Form.Item>
+          <Form.Item name="bank_account" label="Account"><Input /></Form.Item>
         </div>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <Form.Item name="preferred_payment_method" label="Pay by" style={{ flex: 1 }}>
+        <div className="form-row form-row-center">
+          <Form.Item name="preferred_payment_method" label="Pay by">
             <Select options={[{ value: "EFT", label: "Bank transfer" }, { value: "CHEQUE", label: "Cheque" }, { value: "CARD", label: "Virtual card" }]} />
           </Form.Item>
           <Form.Item name="requires_po" label="Needs a PO" valuePropName="checked"><Switch /></Form.Item>
         </div>
-        <Button type="primary" shape="round" size="large" htmlType="submit" style={{ marginTop: 8 }} loading={busy} block>Add vendor</Button>
+        <Button type="primary" shape="round" size="large" htmlType="submit" className="mt-2" loading={busy} block>Add vendor</Button>
       </Form>
     </Drawer>
   );

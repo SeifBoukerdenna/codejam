@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { send, type VendorDetail as Data } from "../api";
 import { ReasonModal, useRunner } from "../components/actions";
-import { Avatar, Hero, Loading, Notice, Page, Panel, Pill, Row, Section, Stat, Tiles } from "../components/ui";
+import { ActionButton, Avatar, EntityHead, Hero, Loading, Money, Notice, Page, Panel, Pill, Row, Section, Stat, Tiles } from "../components/ui";
 import { INVOICE_STATUS, METHOD, VENDOR_STATUS, longDate, money, plural, shortDate, statusOf } from "../format";
 import { useApi, useSession } from "../session";
 
@@ -45,18 +45,17 @@ export default function VendorDetail() {
     <>
       <Panel>
         <Pill tone={pending ? "negative" : status.tone}>{pending ? "Payments on hold" : status.label}</Pill>
-        <div style={{ fontWeight: 600, marginTop: 10, fontSize: 16 }}>
+        <div className="status-sentence">
           {pending ? "Bank change not verified" : v.status === "pending_review" ? "Waiting for a finance manager"
             : v.status === "on_hold" ? "Nothing can be paid" : "Can be paid"}
         </div>
         <div className="panel-actions">
-          {primary && <Button type="primary" size="large" shape="round" disabled={!primary.perm.allowed} onClick={primary.onClick}>{primary.label}</Button>}
+          {primary && <ActionButton perm={primary.perm} onRun={primary.onClick}>{primary.label}</ActionButton>}
           {act.request_bank_change?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setChanging(true)}>Change bank details</Button>}
           {act.hold?.allowed && <Button className="danger-soft" size="large" shape="round" onClick={() => setHolding(true)}>Put on hold</Button>}
           {act.release_hold?.allowed && <Button className="soft" size="large" shape="round"
             onClick={() => run(() => send("POST", `/vendors/${v.vendor_id}/hold`, { release: true }), "Hold released", reload)}>Release hold</Button>}
         </div>
-        {primary && !primary.perm.allowed && <div className="reason">{primary.perm.reason}</div>}
       </Panel>
       <Panel title="Bank account">
         <Stat label="Institution" value={v.bank_institution ?? "—"} />
@@ -69,16 +68,11 @@ export default function VendorDetail() {
 
   const head = (
     <>
-      <button className="link-button" onClick={() => navigate(-1)} style={{ marginBottom: 22 }}><ArrowLeftOutlined /> Back</button>
-      <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 26 }}>
-        <Avatar name={v.legal_name} size="lg" />
-        <div>
-          <h1 className="page-title" style={{ fontSize: 26 }}>{v.legal_name}</h1>
-          <div className="muted small">{v.category} · {v.province_or_state ?? v.country} · {v.vendor_id}</div>
-        </div>
-      </div>
+      <button className="link-button mb-5" onClick={() => navigate(-1)}><ArrowLeftOutlined aria-hidden /> Back</button>
+      <EntityHead avatar={<Avatar name={v.legal_name} size="lg" />} title={<h1 className="page-title">{v.legal_name}</h1>}
+        sub={`${v.category} · ${v.province_or_state ?? v.country} · ${v.vendor_id}`} />
 
-      <Hero label="Paid this year" value={money(data.paid_this_year.cents)}
+      <Hero label="Paid this year" cents={data.paid_this_year.cents}
         meta={<span>{data.paid_this_year.count} {plural(data.paid_this_year.count, "payment", "payments")}</span>} />
     </>
   );
@@ -96,14 +90,14 @@ export default function VendorDetail() {
       {v.status === "on_hold" && v.status_reason && <Notice tone="negative" title="On hold">{v.status_reason}</Notice>}
       {data.lookalike_of && (
         <Notice tone="negative" title={`Looks like ${data.lookalike_of.legal_name}, but isn't`}>
-          We've paid <Link to={`/vendors/${data.lookalike_of.vendor_id}`} style={{ fontWeight: 600 }}>{data.lookalike_of.legal_name}</Link>{" "}
+          We've paid <Link to={`/vendors/${data.lookalike_of.vendor_id}`} className="strong">{data.lookalike_of.legal_name}</Link>{" "}
           {data.lookalike_of.payments} times. This one has a {data.lookalike_of.reasons.filter((r) => r.startsWith("different"))
             .map((r) => r.replace("different ", "")).join(", ")} that don't match.
         </Notice>
       )}
       {data.similar.filter((s) => s.kind === "duplicate").map((s) => (
         <Notice key={s.vendor_id} tone="warning" title={`Possibly the same company as ${s.legal_name}`}>
-          {s.reasons.join(", ")}. <Link to={`/vendors/${s.vendor_id}`} style={{ fontWeight: 600 }}>Open {s.vendor_id}</Link>
+          {s.reasons.join(", ")}. <Link to={`/vendors/${s.vendor_id}`} className="strong">Open {s.vendor_id}</Link>
         </Notice>
       ))}
 
@@ -148,7 +142,7 @@ export default function VendorDetail() {
           <div className="list">
             {data.purchase_orders.map((po) => (
               <Row key={po.po_id} title={po.po_id} sub={`${po.description} · ${po.status.replace("_", " ")}`}
-                end={<><span className="row-amount">{money(po.total_amount_cents - po.invoiced_cents)}</span>
+                end={<><span className="row-amount"><Money cents={po.remaining_cents} /></span>
                   <span className="small muted">left of {money(po.total_amount_cents, "CAD", true)}</span></>} />
             ))}
           </div>
@@ -163,7 +157,7 @@ export default function VendorDetail() {
               <Row key={inv.invoice_id} to={`/invoices/${inv.invoice_id}`}
                 title={`${inv.is_credit_note ? "Credit note" : "Invoice"} ${inv.vendor_invoice_number ?? inv.invoice_id}`}
                 sub={`${shortDate(inv.invoice_date, today)} · ${inv.invoice_id}`}
-                end={<><span className="row-amount">{money(inv.total_cents, inv.currency)}</span>
+                end={<><span className="row-amount"><Money cents={inv.total_cents} currency={inv.currency} /></span>
                   {inv.status !== "paid" && <Pill tone={s.tone}>{s.label}</Pill>}</>} />
             );
           })}
@@ -189,10 +183,10 @@ function BankChangeModal({ open, vendorId, onClose, onDone }: { open: boolean; v
         "Recorded. Payments are held until someone verifies it by phone.", onDone).then((ok) => ok && onClose()))}>
       <p className="muted">Nothing changes until someone else verifies it by calling the vendor.</p>
       <Form form={form} layout="vertical" initialValues={{ channel: "email_request" }} requiredMark={false}>
-        <div style={{ display: "flex", gap: 12 }}>
-          <Form.Item name="institution" label="Institution" rules={[{ required: true, len: 3 }]} style={{ width: 110 }}><Input /></Form.Item>
-          <Form.Item name="transit" label="Transit" rules={[{ required: true, len: 5 }]} style={{ width: 130 }}><Input /></Form.Item>
-          <Form.Item name="account" label="Account" rules={[{ required: true }]} style={{ flex: 1 }}><Input /></Form.Item>
+        <div className="form-row">
+          <Form.Item name="institution" label="Institution" rules={[{ required: true, len: 3 }]} className="field-sm"><Input /></Form.Item>
+          <Form.Item name="transit" label="Transit" rules={[{ required: true, len: 5 }]} className="field-md"><Input /></Form.Item>
+          <Form.Item name="account" label="Account" rules={[{ required: true }]}><Input /></Form.Item>
         </div>
         <Form.Item name="channel" label="How the request came in">
           <Select options={[{ value: "email_request", label: "Email" }, { value: "phone", label: "Phone" }, { value: "vendor_portal", label: "Vendor portal" }]} />

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app import audit, audit_chain, findings
-from app.auth import current_user, require
+from app.auth import can, current_user, require
 from app.db import get_conn
 
 router = APIRouter(prefix="/api")
@@ -13,8 +13,8 @@ router = APIRouter(prefix="/api")
 def my_approvals(conn=Depends(get_conn), user=Depends(current_user)):
     """Only the step that is waiting NOW: an invoice reaches step 2's approver after step 1 is done."""
     if not user:
-        return []
-    return conn.execute(
+        return {"items": [], "total_cad_cents": 0}
+    items = conn.execute(
         """SELECT a.approval_id, a.invoice_id, a.step_no, a.approver_role, a.routing_note, a.on_behalf_of_user_id,
                   ob.full_name AS on_behalf_of_name, i.vendor_invoice_number, i.total_cad_cents, i.invoice_date,
                   coalesce(v.legal_name, 'Unknown vendor') AS vendor_name
@@ -27,6 +27,7 @@ def my_approvals(conn=Depends(get_conn), user=Depends(current_user)):
            ORDER BY i.invoice_date, a.invoice_id""",
         (user["user_id"],),
     ).fetchall()
+    return {"items": items, "total_cad_cents": sum(a["total_cad_cents"] or 0 for a in items)}
 
 
 @router.get("/audit")
@@ -60,16 +61,23 @@ def audit_findings(conn=Depends(get_conn)):
         "recovered_cad_cents": sum(r["overpaid_cad_cents"] for r in recs if r["status"] == "recovered"),
         "to_recover_cad_cents": sum(r["overpaid_cad_cents"] for r in recs if r["status"] != "recovered"),
         "to_recover_count": sum(r["status"] != "recovered" for r in recs),
+        "recovery_totals": {s: sum(r["overpaid_cad_cents"] for r in recs if r["status"] == s)
+                            for s in ("to_recover", "requested", "recovered")},
         "split_invoices": findings.split_invoices(conn),
         "tax_at_risk": at_risk,
         "tax_at_risk_cents": sum(r["at_risk_cents"] for r in at_risk),
+        "tax_invoice_count": len({r["invoice_id"] for r in at_risk}),
+        "tax_by_problem": sorted(
+            ({"code": code, "cents": sum(r["at_risk_cents"] for r in at_risk if r["code"] == code)}
+             for code in {r["code"] for r in at_risk}), key=lambda t: -t["cents"]),
     }
 
 
 @router.get("/recoveries")
 def list_recoveries(conn=Depends(get_conn), user=Depends(current_user)):
     signer = user["full_name"] if user else "Accounts Payable"
-    return [{**r, "letter": findings.recovery_letter(r, signer)} for r in findings.recoveries(conn)]
+    allowed = can(conn, user, "recovery.update").as_dict()   # the button shows the server's reason when refused
+    return [{**r, "letter": findings.recovery_letter(r, signer), "can_update": allowed} for r in findings.recoveries(conn)]
 
 
 @router.post("/recoveries/{key}/{step}")

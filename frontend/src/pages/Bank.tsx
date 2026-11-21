@@ -1,10 +1,12 @@
 import { Button, Drawer } from "antd";
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { send, type BankLine, type BankPage } from "../api";
 import { useRunner } from "../components/actions";
-import { Avatar, Check, Chips, Draft, Empty, Hero, Loading, Page, PageTitle, Panel, Pill, Row, Section, Stat, Tiles } from "../components/ui";
-import { instant, longDate, money, plural, shortDate } from "../format";
+import { CellWho, DataTable, type Column } from "../components/DataTable";
+import { ActionButton, Avatar, Check, Chips, Draft, EmptyState, Hero, Loading, Money, Page, PageTitle, Panel, Pill, Progress,
+  Row, Section, Stat, Tiles } from "../components/ui";
+import { instant, longDate, plural, shortDate } from "../format";
 import { useApi, useSession } from "../session";
 
 // Every debit on the bank statement, matched to a payment we made or explained in plain words.
@@ -31,12 +33,19 @@ export default function Bank() {
   const open = d.lines.filter((l) => l.todo).sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
   const done = d.lines.filter((l) => l.resolution);
   const matched = d.lines.filter((l) => l.kind === "matched");
-  const ask = open.filter((l) => l.todo === "ask_bank");
-  const fees = open.filter((l) => l.todo === "book_fee");
-  const cheques = open.filter((l) => l.todo === "mark_cashed");
-  const allowed = d.can_act.allowed;
-  const act = (path: string, done: string) => run(() => send("POST", path), done, page.reload);
+  const totals = d.todo_totals;
+  const perm = d.can_act.allowed ? undefined : { allowed: false, reason: d.can_act.reason ?? "" };
   const shown = { open, done, matched }[tab];
+
+  const columns: Column<BankLine>[] = [
+    { key: "what", title: "What it is", render: (l) => (
+      <CellWho avatar={<Avatar name={l.vendor_name ?? "Bank"} size="sm" round={!l.vendor_name} dark={!l.vendor_name} />}
+        main={l.kind === "matched" ? l.vendor_name : l.title} sub={l.description} />) },
+    { key: "date", title: "Date", optional: "wide", width: "date", render: (l) => shortDate(l.posted_date, today) },
+    { key: "status", title: "To do", width: "status", render: (l) => l.todo ? <Pill tone={l.tone === "negative" ? "negative" : "warning"}>{TODO_LABEL[l.todo]}</Pill>
+      : l.resolution ? <Pill tone="neutral">{RESOLUTION_LABEL[l.resolution]}</Pill> : <Pill tone="positive">Matched</Pill> },
+    { key: "amount", title: "Debit", align: "right", width: "amount", render: (l) => <Money cents={l.amount_cents} /> },
+  ];
 
   const rail = (
     <Panel title="What to do">
@@ -44,21 +53,22 @@ export default function Bank() {
         <Check tone="positive">Every debit on the statement is explained.</Check>
       ) : (
         <>
-          {ask.length > 0 && <Stat label={`Ask the bank about ${ask.length} debits`} value={money(ask.reduce((n, l) => n + l.at_stake_cents, 0))} />}
-          {fees.length > 0 && <Stat label={`Book ${fees.length} bank ${plural(fees.length, "fee", "fees")}`} value={money(fees.reduce((n, l) => n + l.amount_cents, 0))} />}
-          {cheques.length > 0 && <Stat label={`Mark ${cheques.length} ${plural(cheques.length, "cheque", "cheques")} cashed`} value={money(cheques.reduce((n, l) => n + l.amount_cents, 0))} />}
+          {totals.ask_bank.count > 0 && <Stat label={`Ask the bank about ${totals.ask_bank.count} debits`} value={<Money cents={totals.ask_bank.cents} />} />}
+          {totals.book_fee.count > 0 && <Stat label={`Book ${totals.book_fee.count} bank ${plural(totals.book_fee.count, "fee", "fees")}`} value={<Money cents={totals.book_fee.cents} />} />}
+          {totals.mark_cashed.count > 0 && <Stat label={`Mark ${totals.mark_cashed.count} ${plural(totals.mark_cashed.count, "cheque", "cheques")} cashed`} value={<Money cents={totals.mark_cashed.cents} />} />}
           <div className="panel-actions">
-            {ask.length > 0 && <Button type="primary" shape="round" size="large" disabled={!allowed} onClick={() => setWriting(true)}>Write to the bank</Button>}
-            {fees.length > 0 && (
-              <Button className="soft" shape="round" size="large" disabled={!allowed}
-                onClick={() => act("/bank/book-fees", `Booked to ${d.bank_fee_account}`)}>Book fees to {d.bank_fee_account}</Button>
+            {totals.ask_bank.count > 0 && <ActionButton perm={perm} onRun={() => setWriting(true)}>Write to the bank</ActionButton>}
+            {totals.book_fee.count > 0 && (
+              <ActionButton kind="soft" perm={perm} onRun={() => run(() => send("POST", "/bank/book-fees"), `Booked to ${d.bank_fee_account}`, page.reload)}>
+                Book fees to {d.bank_fee_account}
+              </ActionButton>
             )}
-            {cheques.length > 0 && (
-              <Button className="soft" shape="round" size="large" disabled={!allowed}
-                onClick={() => act("/bank/cheques-cashed", "Cheques marked as cashed")}>Mark cheques cashed</Button>
+            {totals.mark_cashed.count > 0 && (
+              <ActionButton kind="soft" perm={perm} onRun={() => run(() => send("POST", "/bank/cheques-cashed"), "Cheques marked as cashed", page.reload)}>
+                Mark cheques cashed
+              </ActionButton>
             )}
           </div>
-          {!allowed && <div className="reason">{d.can_act.reason}</div>}
         </>
       )}
     </Panel>
@@ -68,63 +78,47 @@ export default function Bank() {
   const head = (
     <>
       <PageTitle title="Bank statement" />
-      <div style={{ marginTop: 26 }}>
-        <Hero label="Debits we can't explain" value={money(d.unexplained_cents + d.waiting_cents)}
+      <div className="mt-5">
+        <Hero label="Debits we can't explain" cents={d.in_question_cents}
           meta={<span>{!d.unexplained_cents && d.waiting_cents ? "Asked the bank, waiting for their answer · "
             : !d.unexplained_cents ? "Every debit is explained · " : ""}
             {d.matched} of {d.lines.length} debits match a payment · {shortDate(d.statement_from, today)} to {shortDate(d.statement_to, today)}</span>} />
-        <div className="progress"><div style={{ width: `${((d.lines.length - open.length) / d.lines.length) * 100}%`, background: "var(--green)" }} /></div>
+        <Progress done={d.lines.length - open.length} of={d.lines.length} tone="positive"
+          label={`${d.lines.length - open.length} of ${d.lines.length} debits explained`} />
       </div>
     </>
   );
 
   return (
     <Page rail={rail} railFirst head={head}>
-
       {d.missing_from_statement.map((m) => (
         <Check key={m.payment_id} tone="negative">
-          <Link to={`/invoices/${m.invoice_id}`}>{m.payment_id}</Link> to {m.vendor_name} ({money(m.amount_cents)}) was marked paid
-          on {longDate(m.paid_date)}, but it never left the account.
+          {m.payment_id} to {m.vendor_name} (<Money cents={m.amount_cents} />) was marked paid on {longDate(m.paid_date)},
+          but it never left the account.
         </Check>
       ))}
-
-      <div style={{ marginTop: 26 }}>
-        <Chips<Tab> value={tab} onChange={(v) => setParams({ tab: v })} options={[
-          { value: "open", label: "To explain", count: open.length },
-          { value: "done", label: "Handled", count: done.length },
-          { value: "matched", label: "Matched", count: matched.length },
-        ]} />
+      <Chips<Tab> label="Bank lines" value={tab} onChange={(v) => setParams({ tab: v })} options={[
+        { value: "open", label: "To explain", count: open.length },
+        { value: "done", label: "Handled", count: done.length },
+        { value: "matched", label: "Matched", count: matched.length },
+      ]} />
+      <div className="mt-5">
+        <DataTable label={{ open: "Bank debits to explain", done: "Bank debits handled", matched: "Bank debits matched to a payment" }[tab]}
+          columns={columns} rows={shown} rowKey={(l) => l.bank_txn_id} onOpen={(l) => setOpenId(l.bank_txn_id)}
+          empty={<EmptyState title={tab === "open" ? "Nothing left to explain" : "Nothing here yet"} />} />
       </div>
-
-      <Section title={{ open: "To explain", done: "Handled", matched: "Matched to a payment" }[tab]} first>
-        {shown.length ? (
-          <div className="list">
-            {shown.map((l) => (
-              <Row key={l.bank_txn_id} onClick={() => setOpenId(l.bank_txn_id)}
-                avatar={<Avatar name={l.vendor_name ?? "Bank"} round={!l.vendor_name} dark={!l.vendor_name} />}
-                title={l.kind === "matched" ? l.vendor_name : l.title}
-                sub={`${shortDate(l.posted_date, today)} · ${l.description}`}
-                end={<>
-                  <span className="row-amount">{money(l.amount_cents)}</span>
-                  {l.todo ? <Pill tone={l.tone === "negative" ? "negative" : "warning"}>{TODO_LABEL[l.todo]}</Pill>
-                    : l.resolution ? <Pill tone="neutral">{RESOLUTION_LABEL[l.resolution]}</Pill> : null}
-                </>} />
-            ))}
-          </div>
-        ) : <Empty title={tab === "open" ? "Nothing left to explain" : "Nothing here yet"} />}
-      </Section>
 
       <LineDrawer line={d.lines.find((l) => l.bank_txn_id === openId) ?? null} onClose={() => setOpenId(null)} />
 
       <Drawer open={writing} onClose={() => setWriting(false)} size={560} title={null}>
         <h2 className="drawer-title">Write to the bank</h2>
-        <p className="muted" style={{ margin: "0 0 18px" }}>
-          {ask.length} {plural(ask.length, "debit", "debits")}, with the date, amount and trace of each.
+        <p className="muted mb-5 m-0">
+          {totals.ask_bank.count} {plural(totals.ask_bank.count, "debit", "debits")}, with the date, amount and trace of each.
         </p>
         <Draft text={d.letter} subject="Debits on our business account we can't explain"
-          actions={allowed && (
-            <Button type="primary" shape="round" onClick={() => run(() => send("POST", "/bank/ask"), "Marked as sent to the bank",
-              () => { page.reload(); setWriting(false); })}>Mark as sent</Button>
+          actions={d.can_act.allowed && (
+            <ActionButton size="middle" onRun={() => run(() => send("POST", "/bank/ask"), "Marked as sent to the bank",
+              () => { page.reload(); setWriting(false); }, { to: "/bank?tab=done", label: "See what was asked" })}>Mark as sent</ActionButton>
           )} />
       </Drawer>
     </Page>
@@ -137,12 +131,12 @@ function LineDrawer({ line, onClose }: { line: BankLine | null; onClose: () => v
       {line && (
         <div>
           <Pill tone={line.tone}>{line.title}</Pill>
-          <div style={{ marginTop: 14 }}>
-            <Hero label={longDate(line.posted_date)} value={money(line.amount_cents)}
+          <div className="mt-4">
+            <Hero label={longDate(line.posted_date)} cents={line.amount_cents}
               meta={line.at_stake_cents !== line.amount_cents && line.todo
-                ? <span><b style={{ color: "var(--red)" }}>{money(line.at_stake_cents)}</b> more than we sent</span> : undefined} />
+                ? <span><Money cents={line.at_stake_cents} /> more than we sent</span> : undefined} />
           </div>
-          <div className="checks" style={{ marginTop: 8 }}>
+          <div className="checks mt-2">
             <Check tone={line.tone}>{line.explanation}</Check>
             {line.resolution && (
               <Check tone="positive" meta={line.resolved_at ? instant(line.resolved_at) : undefined}>

@@ -1,6 +1,6 @@
 """Home page: what needs the current user, money paid out this year, and what's going out next."""
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends
 
@@ -41,12 +41,22 @@ def home(conn=Depends(get_conn), user=Depends(current_user)):
         for m in months
     ]
 
-    # Daily totals for the cumulative "paid this year" line chart (the UI fills in days with nothing paid).
+    # Daily totals, and the running total for the "paid this year" chart: one point per day from Jan 1 to today
+    # (days with no payment repeat the day before). Computed here so the browser only draws it.
     paid_daily = conn.execute(
         """SELECT paid_date AS date, sum(amount_cad_cents)::bigint AS total_cad_cents, count(*) AS count
            FROM payments WHERE paid_date BETWEEN %s AND %s GROUP BY paid_date ORDER BY paid_date""",
         (year_start, today),
     ).fetchall()
+    by_day = {d["date"]: d["total_cad_cents"] for d in paid_daily}
+    running, paid_running = 0, []
+    for n in range((today - year_start).days + 1):
+        day = year_start + timedelta(days=n)
+        running += by_day.get(day, 0)
+        paid_running.append({"date": day.isoformat(), "cents": running})
+    # How much went out in the last month / 3 months: the running total now minus where it stood then.
+    paid_change = {key: running - next(p["cents"] for p in paid_running if p["date"] >= (today - timedelta(days=days)).isoformat())
+                   for key, days in (("1M", 30), ("3M", 91))}
 
     user_id = user["user_id"] if user else None
     bank = reconcile.check_statement(conn)
@@ -83,6 +93,8 @@ def home(conn=Depends(get_conn), user=Depends(current_user)):
         "payments_this_year": sum(m["count"] for m in paid_by_month),
         "paid_by_month": paid_by_month,
         "paid_daily": paid_daily,
+        "paid_running": paid_running,
+        "paid_change": paid_change,
         "todo": todo,
         "scheduled": scheduled,
         "upcoming": upcoming,

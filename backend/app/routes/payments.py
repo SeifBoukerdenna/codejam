@@ -46,7 +46,20 @@ def list_payments(status: str = "prepared", conn=Depends(get_conn)):
     ).fetchall()
     # Money about to go out twice: shown on top of the dashboard so it's stopped before release.
     twice = [f for f in findings.double_payments(conn) if f["kind"] == "about_to_pay_twice"]
-    return {"payments": rows, "summary": {s["status"]: s for s in summary}, "about_to_pay_twice": twice}
+    by_status = {s["status"]: s for s in summary}
+
+    def total(*names):
+        return {"count": sum(by_status[n]["count"] for n in names if n in by_status),
+                "total_cad_cents": sum(by_status[n]["total_cad_cents"] for n in names if n in by_status)}
+
+    approved = conn.execute(
+        """SELECT count(*) AS count, coalesce(sum(total_cad_cents), 0)::bigint AS total_cad_cents
+           FROM invoices WHERE status = 'approved' AND NOT is_credit_note""").fetchone()
+    # One count + total per tab of the Payments page, so the browser never adds amounts up.
+    tabs = {"approved": approved, "prepared": total("prepared"), "held": total("held"),
+            "going": total("released", "scheduled"), "outstanding": total("outstanding"), "settled": total("settled")}
+    return {"payments": rows, "summary": by_status, "tabs": tabs, "going_out": total("prepared", "released", "scheduled"),
+            "about_to_pay_twice": twice}
 
 
 def _payment(conn, payment_id: str) -> dict:

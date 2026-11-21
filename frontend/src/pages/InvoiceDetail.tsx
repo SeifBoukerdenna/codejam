@@ -6,7 +6,9 @@ import { send, type Email, type InvoiceDetail as Data, type Permission } from ".
 import { ReasonModal, useRunner } from "../components/actions";
 import InvoiceEditor from "../components/InvoiceEditor";
 import CardPanel from "../components/CardPanel";
-import { Avatar, Check, Chips, Hero, Loading, Notice, Page, Panel, Pill, Row, Section, Tiles } from "../components/ui";
+import { DataTable } from "../components/DataTable";
+import { ActionButton, Avatar, Check, Chips, EntityHead, Hero, Loading, Money, Notice, Page, Panel, Pill, Section, Stat, StatusPill,
+  Tiles } from "../components/ui";
 import VendorForm from "../components/VendorForm";
 import {
   APPROVER_ROLE, INVOICE_STATUS, METHOD, PAYMENT_STATUS, PROVINCE, dateTime, instant, longDate, money, shortDate, statusOf,
@@ -148,10 +150,12 @@ export default function InvoiceDetail() {
 
   // The single next step for this person, in the order the work flows. If it exists but they may not do it,
   // it shows disabled with the server's reason: that's how separation of duties is visible in the demo.
-  const candidates: { perm: Permission; label: string; act: () => Promise<unknown>; done: string }[] = [
-    { perm: a.approve, label: `Approve ${amount}`, act: post(`/invoices/${inv.invoice_id}/approve`), done: "Approved" },
+  const candidates: { perm: Permission; label: string; act: () => Promise<unknown>; done: string; link?: { to: string; label: string } }[] = [
+    { perm: a.approve, label: `Approve ${amount}`, act: post(`/invoices/${inv.invoice_id}/approve`), done: "Approved",
+      link: { to: "/approvals", label: "Next approval" } },
     { perm: a.submit, label: "Submit for approval", act: post(`/invoices/${inv.invoice_id}/submit`), done: "Sent for approval" },
-    { perm: a.prepare_payment, label: `Pay ${amount}`, act: post(`/invoices/${inv.invoice_id}/payment`, { method: payBy }), done: "Payment prepared" },
+    { perm: a.prepare_payment, label: `Pay ${amount}`, act: post(`/invoices/${inv.invoice_id}/payment`, { method: payBy }), done: "Payment prepared",
+      link: { to: "/payments?tab=prepared", label: "See payments to release" } },
     { perm: a.release, label: `Release ${money(pay?.amount_cents, pay?.currency)}`, act: post(`/payments/${a.payment_id}/release`), done: "Payment released" },
     { perm: a.recheck_payment, label: "Re-check the hold", act: post(`/payments/${a.payment_id}/recheck`), done: "Hold lifted" },
     { perm: a.settle, label: "Record bank confirmation", act: post(`/payments/${a.payment_id}/settle`), done: "Marked as paid" },
@@ -166,31 +170,29 @@ export default function InvoiceDetail() {
     <>
       <Panel>
         <Pill tone={status.tone}>{status.label}</Pill>
-        <div style={{ fontWeight: 600, marginTop: 10, fontSize: 16, letterSpacing: "-0.01em" }}>{statusSentence(data, today, userId)}</div>
+        <div className="status-sentence">{statusSentence(data, today, userId)}</div>
         {data.review_reasons.length > 0 && (
-          <div className="checks" style={{ marginTop: 8 }}>
+          <div className="checks mt-2">
             {data.review_reasons.map((r) => <Check key={r} tone="warning">{r}</Check>)}
           </div>
         )}
         {a.prepare_payment?.allowed && (
-          <div style={{ marginTop: 16 }}>
-            <div className="small muted" style={{ marginBottom: 8 }}>Pay by</div>
-            <Chips value={payBy} onChange={setMethod} options={[
+          <div className="mt-4">
+            <div className="small muted mb-2">Pay by</div>
+            <Chips label="Pay by" value={payBy} onChange={setMethod} options={[
               { value: "EFT", label: "Bank transfer" }, { value: "CARD", label: "Virtual card" }, { value: "CHEQUE", label: "Cheque" },
             ]} />
           </div>
         )}
         <div className="panel-actions">
           {primary && (
-            <Button type="primary" size="large" shape="round" disabled={!primary.perm!.allowed}
-              onClick={() => run(primary.act, primary.done, reload)}>{primary.label}</Button>
+            <ActionButton perm={primary.perm} onRun={() => run(primary.act, primary.done, reload, primary.link)}>{primary.label}</ActionButton>
           )}
           {a.decline?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setModal("decline")}>Decline</Button>}
           {a.edit?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setEditing(true)}>Correct fields</Button>}
           {a.reject?.allowed && !a.decline && <Button className="danger-soft" size="large" shape="round" onClick={() => setModal("reject")}>Reject invoice</Button>}
           {a.cancel_payment?.allowed && <Button className="danger-soft" size="large" shape="round" onClick={() => setModal("cancel")}>Stop payment</Button>}
         </div>
-        {primary && !primary.perm!.allowed && <div className="reason">{primary.perm!.reason}</div>}
         {!primary && !a.edit?.allowed && !a.cancel_payment?.allowed && <div className="reason">Nothing for you to do here.</div>}
       </Panel>
 
@@ -202,13 +204,13 @@ export default function InvoiceDetail() {
                 <div className={`step-mark ${s.action === "approved" ? "done" : s.action === "rejected" ? "declined" : s.step_no === firstPending ? "now" : ""}`}>
                   {s.action === "approved" ? <CheckOutlined /> : s.action === "rejected" ? <CloseOutlined /> : s.step_no}
                 </div>
-                <div style={{ minWidth: 0 }}>
+                <div className="min-0">
                   <div className="step-name">{s.approver_name}</div>
                   <div className="step-sub">
                     {APPROVER_ROLE[s.approver_role] ?? s.approver_role}{s.rule_ids ? ` · ${s.rule_ids}` : ""}
                     {s.on_behalf_of_name ? ` · for ${s.on_behalf_of_name}` : ""}
                   </div>
-                  {s.routing_note && <div className="step-sub" style={{ marginTop: 3 }}>{s.routing_note}</div>}
+                  {s.routing_note && <div className="step-sub mt-1">{s.routing_note}</div>}
                 </div>
               </div>
             ))}
@@ -218,9 +220,9 @@ export default function InvoiceDetail() {
 
       {pay && (
         <Panel title="Payment">
-          <div className="panel-stat"><span>Status</span><span><Pill tone={statusOf(PAYMENT_STATUS, pay.status).tone}>{statusOf(PAYMENT_STATUS, pay.status).label}</Pill></span></div>
-          <div className="panel-stat"><span>Amount</span><span>{money(pay.amount_cents, pay.currency)}</span></div>
-          {!!pay.credit_applied_cents && <div className="panel-stat"><span>Credit deducted</span><span>{money(pay.credit_applied_cents)}</span></div>}
+          <Stat label="Status" value={<StatusPill kind="payment" status={pay.status} />} />
+          <Stat label="Amount" value={<Money cents={pay.amount_cents} currency={pay.currency} />} />
+          {!!pay.credit_applied_cents && <Stat label="Credit deducted" value={<Money cents={pay.credit_applied_cents} />} />}
           <div className="panel-stat"><span>Method</span><span>{METHOD[pay.method] ?? pay.method}</span></div>
           <div className="panel-stat"><span>{pay.paid_date ? "Paid" : "Date"}</span><span>{shortDate(pay.paid_date ?? pay.scheduled_date, today)}</span></div>
           {pay.reference && <div className="panel-stat"><span>Reference</span><span>{pay.reference}</span></div>}
@@ -236,21 +238,14 @@ export default function InvoiceDetail() {
 
   const head = (
     <>
-      <button className="link-button" onClick={() => navigate(-1)} style={{ marginBottom: 22 }}><ArrowLeftOutlined /> Back</button>
+      <button className="link-button mb-5" onClick={() => navigate(-1)}><ArrowLeftOutlined aria-hidden /> Back</button>
+      <EntityHead avatar={<Avatar name={inv.vendor_name ?? x?.fields.vendor_name ?? "?"} size="lg" />}
+        title={inv.vendor_id ? <Link to={`/vendors/${inv.vendor_id}`}>{inv.vendor_name}</Link> : x?.fields.vendor_name ?? "Unknown vendor"}
+        sub={`${inv.is_credit_note ? "Credit note" : "Invoice"} ${inv.vendor_invoice_number ?? "—"} · ${inv.invoice_id}`} />
 
-      <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 26 }}>
-        <Avatar name={inv.vendor_name ?? x?.fields.vendor_name ?? "?"} size="lg" />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 650, fontSize: 18, letterSpacing: "-0.01em" }}>
-            {inv.vendor_id ? <Link to={`/vendors/${inv.vendor_id}`}>{inv.vendor_name}</Link> : x?.fields.vendor_name ?? "Unknown vendor"}
-          </div>
-          <div className="muted small">{inv.is_credit_note ? "Credit note" : "Invoice"} {inv.vendor_invoice_number ?? "—"} · {inv.invoice_id}</div>
-        </div>
-      </div>
-
-      <Hero label={inv.is_credit_note ? "Credit" : "Amount"} value={amount}
+      <Hero label={inv.is_credit_note ? "Credit" : "Amount"} cents={inv.total_cents ?? undefined} currency={inv.currency}
         meta={inv.currency !== "CAD" && inv.total_cad_cents !== null
-          ? <span>≈ {money(inv.total_cad_cents)} at {inv.fx_rate_to_cad} on {shortDate(inv.invoice_date, today)}</span>
+          ? <span>≈ <Money cents={inv.total_cad_cents} /> at {inv.fx_rate_to_cad} on {shortDate(inv.invoice_date, today)}</span>
           : <span>Due {longDate(inv.due_date)}</span>} />
     </>
   );
@@ -261,7 +256,7 @@ export default function InvoiceDetail() {
       {pay?.status === "held" && <Notice tone="negative" title="Payment on hold">{pay.hold_reason}</Notice>}
       {!inv.vendor_id && a.edit?.allowed && (
         <Notice tone="info" title="This vendor isn't in our list yet">
-          <Button className="soft" shape="round" style={{ marginTop: 8 }} onClick={() => setOnboarding(true)}>Add this vendor</Button>
+          <Button className="soft mt-2" shape="round" onClick={() => setOnboarding(true)}>Add this vendor</Button>
         </Notice>
       )}
       {data.audit_notes.map((n) => <Notice key={n} tone="negative" title="Audit finding">{n}</Notice>)}
@@ -273,7 +268,7 @@ export default function InvoiceDetail() {
               <Check key={c.check_id} tone={checkTone(c)} meta={c.severity === "warn" && (c.acknowledged_by
                 ? `Checked by ${c.acknowledged_by_name}`
                 : a.edit?.allowed && (
-                  <Button className="soft" size="small" shape="round" style={{ marginTop: 4 }} onClick={() => run(
+                  <Button className="soft mt-1" size="small" shape="round" onClick={() => run(
                     () => send("POST", `/invoices/${inv.invoice_id}/checks/${c.check_id}/acknowledge`), "Marked as checked", reload)}>
                     Mark as checked</Button>))}>
                 {c.message}
@@ -286,7 +281,7 @@ export default function InvoiceDetail() {
       {x && (
         <Section title="What we read" extra={
           <a href={`/api/documents/${x.document_id}/file`} target="_blank" rel="noreferrer"><FileSearchOutlined /> Original</a>}>
-          <p className="muted small" style={{ margin: "-4px 0 12px" }}>
+          <p className="muted small m-0 mb-3">
             {x.engine === "text_layer" ? "From the PDF's text" : "Scanned image, 3 OCR passes compared"}
             {x.fields.language === "fr" ? " · French" : ""}
             {x.doubtful.length ? ` · ${x.doubtful.length} to confirm` : " · high confidence"}
@@ -314,19 +309,22 @@ export default function InvoiceDetail() {
       </Section>
 
       <Section title="Lines">
-        <div className="list">
-          {data.lines.map((l) => (
-            <Row key={l.line_no} title={l.description}
-              sub={<>{`${Number(l.quantity)} × ${money(l.unit_price_cents, inv.currency)}`}{l.gl_account ? ` · ${l.gl_account} ${l.gl_name ?? ""}` : ""}
-                {l.coding_reason && <div className="small" style={{ whiteSpace: "normal", color: "var(--ink-3)", marginTop: 2 }}>{l.coding_reason}</div>}</>}
-              end={<span className="row-amount">{money(l.amount_cents, inv.currency)}</span>} />
-          ))}
-        </div>
+        <DataTable label="Invoice lines" rows={data.lines} rowKey={(l) => String(l.line_no)} columns={[
+          { key: "desc", title: "Description", render: (l) => (
+            <div className="min-0">
+              <div className="cell-main">{l.description}</div>
+              <div className="cell-sub">{l.gl_account ? `${l.gl_account} ${l.gl_name ?? ""}` : "No ledger account yet"}</div>
+              {l.coding_reason && <div className="cell-sub wrap">{l.coding_reason}</div>}
+            </div>) },
+          { key: "qty", title: "Qty", align: "right", optional: true, width: "num", render: (l) => Number(l.quantity) },
+          { key: "unit", title: "Unit price", align: "right", optional: "wide", width: "amount", render: (l) => <Money cents={l.unit_price_cents} currency={inv.currency} /> },
+          { key: "amount", title: "Amount", align: "right", width: "amount", render: (l) => <Money cents={l.amount_cents} currency={inv.currency} /> },
+        ]} />
         <div className="totals">
-          <div><span>Subtotal</span><span>{money(inv.subtotal_cents, inv.currency)}</span></div>
-          {!!inv.gst_hst_cents && <div><span>{inv.ship_to_province === "ON" ? "HST" : "GST"}</span><span>{money(inv.gst_hst_cents, inv.currency)}</span></div>}
-          {!!inv.pst_qst_cents && <div><span>{inv.ship_to_province === "QC" ? "QST" : "PST"}</span><span>{money(inv.pst_qst_cents, inv.currency)}</span></div>}
-          <div className="grand"><span>Total</span><span>{money(inv.total_cents, inv.currency)}</span></div>
+          <div><span>Subtotal</span><Money cents={inv.subtotal_cents} currency={inv.currency} /></div>
+          {!!inv.gst_hst_cents && <div><span>{inv.ship_to_province === "ON" ? "HST" : "GST"}</span><Money cents={inv.gst_hst_cents} currency={inv.currency} /></div>}
+          {!!inv.pst_qst_cents && <div><span>{inv.ship_to_province === "QC" ? "QST" : "PST"}</span><Money cents={inv.pst_qst_cents} currency={inv.currency} /></div>}
+          <div className="grand"><span>Total</span><Money cents={inv.total_cents} currency={inv.currency} /></div>
         </div>
       </Section>
 

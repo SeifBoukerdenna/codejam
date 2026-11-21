@@ -1,6 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router";
 import AppShell from "./components/AppShell";
-import { Empty, Page } from "./components/ui";
+import { EmptyState, Page } from "./components/ui";
 import Activity from "./pages/Activity";
 import Approvals from "./pages/Approvals";
 import Bank from "./pages/Bank";
@@ -29,7 +29,7 @@ export default function App() {
             <Route path="invoices/:invoiceId" element={<InvoiceDetail />} />
             <Route path="activity" element={<Activity />} />
             <Route path="fool" element={<Fool />} />
-            <Route path="*" element={<Page><Empty title="Page not found">Check the address, or go back home.</Empty></Page>} />
+            <Route path="*" element={<Page><EmptyState title="Page not found">Check the address, or go back home.</EmptyState></Page>} />
           </Route>
         </Routes>
       </BrowserRouter>

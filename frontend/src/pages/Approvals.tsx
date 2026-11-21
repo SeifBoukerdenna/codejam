@@ -1,19 +1,30 @@
 import { CheckCircleFilled } from "@ant-design/icons";
-import type { MyApproval } from "../api";
-import { Avatar, Empty, Hero, Loading, Page, PageTitle, Panel, Row, Section, Stat } from "../components/ui";
-import { APPROVER_ROLE, money, plural, shortDate } from "../format";
+import type { MyApproval, MyApprovals } from "../api";
+import { CellWho, DataTable, type Column } from "../components/DataTable";
+import { Avatar, EmptyState, Hero, Loading, Money, Page, PageTitle, Panel, Stat } from "../components/ui";
+import { APPROVER_ROLE, plural, shortDate } from "../format";
 import { useApi, useSession } from "../session";
 
 // Only the step that is waiting for THIS person now. Routing (delegation, escalation) happened on the server.
 export default function Approvals() {
   const { user, today } = useSession();
-  const { data, error } = useApi<MyApproval[]>("/approvals/mine");
+  const { data, error } = useApi<MyApprovals>("/approvals/mine");
 
   if (!user) {
-    return <Page><PageTitle title="Approvals" /><Empty title="Who are you?">Choose a user to see what's waiting for them.</Empty></Page>;
+    return <Page><PageTitle title="Approvals" /><EmptyState title="Who are you?">Choose a user to see what's waiting for them.</EmptyState></Page>;
   }
   if (!data) return <Loading error={error} />;
-  const total = data.reduce((sum, a) => sum + a.total_cad_cents, 0);
+  const items = data.items;
+
+  const columns: Column<MyApproval>[] = [
+    { key: "vendor", title: "Vendor", render: (a) => (
+      <CellWho avatar={<Avatar name={a.vendor_name} size="sm" />} main={a.vendor_name ?? "Unknown vendor"}
+        sub={`#${a.vendor_invoice_number ?? a.invoice_id}`} />) },
+    { key: "step", title: "Your step", optional: "wide", width: "status", render: (a) => (
+      <span>{APPROVER_ROLE[a.approver_role] ?? a.approver_role}{a.on_behalf_of_name ? ` · for ${a.on_behalf_of_name}` : ""}</span>) },
+    { key: "date", title: "Invoice date", optional: "wide", width: "date", render: (a) => shortDate(a.invoice_date, today) },
+    { key: "amount", title: "Amount", align: "right", width: "amount", render: (a) => <Money cents={a.total_cad_cents} /> },
+  ];
 
   const rail = (
     <Panel title="How approval works">
@@ -21,33 +32,25 @@ export default function Approvals() {
       <Stat label="Over $10,000" value="+ Finance" />
       <Stat label="Over $50,000" value="+ Controller" />
       <Stat label="Over $250,000" value="+ CFO" />
-      <p className="small muted" style={{ margin: "12px 0 0" }}>Nobody approves their own request, or two steps of the same invoice.</p>
+      <p className="small muted mt-3 m-0">Nobody approves their own request, or two steps of the same invoice.</p>
     </Panel>
   );
 
   return (
     <Page rail={rail}>
       <PageTitle title="Approvals" />
-      {data.length === 0 ? (
-        <Empty title="You're all caught up" icon={<CheckCircleFilled style={{ color: "var(--green)" }} />}>Nothing is waiting for you.</Empty>
+      {items.length === 0 ? (
+        <EmptyState title="You're all caught up" icon={<CheckCircleFilled className="text-positive" />}>Nothing is waiting for you.</EmptyState>
       ) : (
         <>
-          <div style={{ marginTop: 26 }}>
-            <Hero label="Waiting for your approval" value={money(total)}
-              meta={<span>{data.length} {plural(data.length, "invoice", "invoices")}</span>} />
+          <div className="mt-5">
+            <Hero label="Waiting for your approval" cents={data.total_cad_cents}
+              meta={<span>{items.length} {plural(items.length, "invoice", "invoices")}</span>} />
           </div>
-          <Section title="Waiting for you">
-            <div className="list">
-              {data.map((a) => (
-                <Row key={a.approval_id} to={`/invoices/${a.invoice_id}`} avatar={<Avatar name={a.vendor_name} />}
-                  title={a.vendor_name ?? "Unknown vendor"}
-                  sub={[`#${a.vendor_invoice_number ?? a.invoice_id}`, shortDate(a.invoice_date, today),
-                    APPROVER_ROLE[a.approver_role] ?? a.approver_role, a.on_behalf_of_name && `for ${a.on_behalf_of_name}`]
-                    .filter(Boolean).join(" · ")}
-                  end={<span className="row-amount">{money(a.total_cad_cents)}</span>} />
-              ))}
-            </div>
-          </Section>
+          <div className="mt-5">
+            <DataTable label="Invoices waiting for your approval" columns={columns} rows={items}
+              rowKey={(a) => a.approval_id} to={(a) => `/invoices/${a.invoice_id}`} />
+          </div>
         </>
       )}
     </Page>

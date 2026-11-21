@@ -1,10 +1,9 @@
 import type { PaymentRow as Payment } from "../api";
-import { METHOD, PAYMENT_STATUS, money, shortDate, statusOf } from "../format";
-import { Avatar, Pill, Row } from "./ui";
+import { METHOD, shortDate } from "../format";
+import { Avatar, Money, Row, StatusPill } from "./ui";
 
-/** One payment in a list. Links to its invoice, where the whole story lives. */
+/** One payment in a list (Home). Links to its invoice, where the whole story lives. */
 export default function PaymentRow({ p, today }: { p: Payment; today: string }) {
-  const status = statusOf(PAYMENT_STATUS, p.status);
   const when = p.paid_date ? shortDate(p.paid_date, today) : shortDate(p.scheduled_date, today);
   return (
     <Row
@@ -13,9 +12,9 @@ export default function PaymentRow({ p, today }: { p: Payment; today: string }) 
       title={p.vendor_name}
       sub={p.hold_reason ?? `${when} · ${METHOD[p.method] ?? p.method}`}
       end={<>
-        <span className="row-amount">{money(p.amount_cents, p.currency)}</span>
-        {/* A badge only where it changes what you'd do: held, waiting for release, uncashed, stopped. */}
-        {["held", "prepared", "outstanding", "cancelled"].includes(p.status) && <Pill tone={status.tone}>{status.label}</Pill>}
+        <span className="row-amount"><Money cents={p.amount_cents} currency={p.currency} /></span>
+        {/* A status only where it changes what you'd do: held, waiting for release, uncashed, stopped. */}
+        {["held", "prepared", "outstanding", "cancelled"].includes(p.status) && <StatusPill kind="payment" status={p.status} />}
       </>}
     />
   );

@@ -20,14 +20,14 @@ export default function CardPanel({ card, attempts, permission, onChanged }: {
     <Panel title="Virtual card">
       <CardFace last4={card.last4} expires={expires} amount={money(card.limit_cents, card.currency)}
         lockedTo={card.vendor_name} status={card.status} />
-      <div className="small muted" style={{ marginTop: 10 }}>
+      <div className="small muted mt-3">
         {card.status === "active" ? `Sent to ${card.sent_to}. Waiting for their charge.`
           : card.status === "used" ? "Charged once, then closed for good." : "Cancelled with its payment."}
       </div>
 
       {permission && (
         <div className="charge-form">
-          <div style={{ fontWeight: 650, fontSize: 14 }}>Charge it like the vendor would</div>
+          <div className="strong">Charge it like the vendor would</div>
           <label>Merchant name<Input value={merchant} onChange={(e) => setMerchant(e.target.value)} /></label>
           <label>Amount<Input prefix="$" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
           <Button type={card.status === "active" ? "primary" : "default"} className={card.status === "active" ? undefined : "soft"}
@@ -42,7 +42,7 @@ export default function CardPanel({ card, attempts, permission, onChanged }: {
       )}
 
       {attempts.length > 0 && (
-        <div className="checks" style={{ marginTop: 10 }}>
+        <div className="checks mt-3">
           {attempts.map((a) => (
             <Check key={a.auth_id} tone={a.approved ? "positive" : "negative"}
               meta={`${a.merchant} · ${money(a.amount_cents, card.currency)} · ${ago(a.attempted_at)}`}>

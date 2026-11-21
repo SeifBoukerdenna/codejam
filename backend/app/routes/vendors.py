@@ -100,7 +100,8 @@ def get_vendor(vendor_id: str, conn=Depends(get_conn), user=Depends(current_user
     contracts = conn.execute("SELECT * FROM contracts WHERE vendor_id = %s ORDER BY start_date DESC", (vendor_id,)).fetchall()
     # DECISION: PO balance is tax-included, see the decisions log in CLAUDE.md.
     purchase_orders = conn.execute(
-        """SELECT po.*, coalesce(sum(i.total_cents), 0)::bigint AS invoiced_cents
+        """SELECT po.*, coalesce(sum(i.total_cents), 0)::bigint AS invoiced_cents,
+                  (po.total_amount_cents - coalesce(sum(i.total_cents), 0))::bigint AS remaining_cents
            FROM purchase_orders po LEFT JOIN invoices i ON i.po_id = po.po_id AND i.status <> 'rejected'
            WHERE po.vendor_id = %s GROUP BY po.po_id ORDER BY po.issue_date DESC""", (vendor_id,)).fetchall()
     invoices = conn.execute(

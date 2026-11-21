@@ -1,17 +1,23 @@
 import { App, Input, Modal } from "antd";
 import { useState } from "react";
+import { useNavigate } from "react-router";
 
 /** Fired after any successful action, so the sidebar's work counts update without a page change. */
 export const CHANGED = "harborline:changed";
 
-/** Run an action against the API: success toast, or the server's own reason when it refuses
- *  ("You approved this invoice, so you can't release its payment (P11)"). Always refreshes after. */
+/** Run an action against the API: a toast that says what happened (and links to it when it happened somewhere
+ *  else), or the server's own reason when it refuses ("You approved this invoice, so you can't release its
+ *  payment (P11)"). Always refreshes after. */
 export function useRunner() {
   const { message } = App.useApp();
-  return async (action: () => Promise<unknown>, success: string, refresh?: () => void): Promise<boolean> => {
+  const navigate = useNavigate();
+  return async (action: () => Promise<unknown>, success: string, refresh?: () => void,
+                link?: { to: string; label: string }): Promise<boolean> => {
     try {
       await action();
-      message.success(success);
+      message.success(link
+        ? { content: <span>{success}<a href={link.to} onClick={(e) => { e.preventDefault(); navigate(link.to); }}>{link.label}</a></span>, duration: 5 }
+        : success);
       window.dispatchEvent(new Event(CHANGED));
       return true;
     } catch (e) {

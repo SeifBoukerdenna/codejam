@@ -7,15 +7,23 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
   "October", "November", "December"];
 
-export function money(cents: number | null | undefined, currency = "CAD", compact = false): string {
-  if (cents === null || cents === undefined) return "—";
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency,
+/** Sign and digits of an amount in cents, e.g. { sign: "−", amount: "1,614.21" }. Formatting only: the browser
+ *  never adds, subtracts or rounds money; it shows what the API computed. */
+export function moneyParts(cents: number, compact = false): { sign: string; amount: string } {
+  const amount = new Intl.NumberFormat("en-CA", {
     notation: compact ? "compact" : "standard",
     maximumFractionDigits: compact ? 1 : 2,
     minimumFractionDigits: compact ? 0 : 2,
-  }).format(cents / 100);
+  }).format(Math.abs(cents) / 100);
+  return { sign: cents < 0 ? "−" : "", amount };
+}
+
+/** "$3,716.34 CAD", "−$1,614.21 CAD", "$1,950.00 USD": the currency is always written out.
+ *  `compact` ("$1.9M") is for chart axes only. */
+export function money(cents: number | null | undefined, currency = "CAD", compact = false): string {
+  if (cents === null || cents === undefined) return "—";
+  const { sign, amount } = moneyParts(cents, compact);
+  return compact ? `${sign}$${amount}` : `${sign}$${amount} ${currency}`;
 }
 
 // Dates come as "2026-11-02" or "2026-10-20T08:25:00". They are read as plain calendar values (no Date
@@ -78,25 +86,27 @@ export function senderName(fromName: string | null, fromAddress: string): string
 
 type Status = { label: string; tone: Tone };
 
+// One status vocabulary for the whole app, in the order work flows. Same word, same colour, every page:
+// amber = a person needs to act, red = blocked, blue = in flow, green = done, grey = nothing to do.
 export const INVOICE_STATUS: Record<string, Status> = {
-  extracting: { label: "Reading document", tone: "neutral" },
+  extracting: { label: "Reading", tone: "neutral" },
   needs_review: { label: "Needs review", tone: "warning" },
   on_hold: { label: "On hold", tone: "negative" },
   pending_approval: { label: "Waiting for approval", tone: "warning" },
   approved: { label: "Approved", tone: "info" },
-  scheduled: { label: "Payment scheduled", tone: "info" },
+  scheduled: { label: "Scheduled", tone: "info" },
   paid: { label: "Paid", tone: "positive" },
   rejected: { label: "Rejected", tone: "negative" },
 };
 
 export const PAYMENT_STATUS: Record<string, Status> = {
-  prepared: { label: "Ready to release", tone: "warning" },
-  held: { label: "Held", tone: "negative" },
-  released: { label: "Released", tone: "info" },
+  prepared: { label: "Waiting for release", tone: "warning" },
+  held: { label: "On hold", tone: "negative" },
+  released: { label: "Sent", tone: "info" },
   scheduled: { label: "Scheduled", tone: "info" },
-  outstanding: { label: "Cheque not cashed yet", tone: "neutral" },
+  outstanding: { label: "Cheque not cashed", tone: "neutral" },
   settled: { label: "Paid", tone: "positive" },
-  cancelled: { label: "Cancelled", tone: "neutral" },
+  cancelled: { label: "Stopped", tone: "neutral" },
 };
 
 export const VENDOR_STATUS: Record<string, Status> = {

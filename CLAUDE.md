@@ -225,12 +225,14 @@ Brim-specific bonuses worth doing: single-use virtual card payments, and "alread
 - Commit often with clear messages. Don't commit `.env` or API keys.
 - If a requirement is ambiguous, pick the simplest reasonable reading, leave a `// DECISION:` comment explaining it, and add it to the list below so we can explain it to the judges.
 
-### UI rules (modelled on Wealthsimple's app: extremely simple)
+### UI rules (a calm, keyboard-first finance tool; started from Wealthsimple's simplicity)
 
-The look lives in `frontend/src/styles.css` (tokens + classes), `frontend/src/theme.ts` (Ant Design restyled)
-and `frontend/src/components/ui.tsx` (Page, PageTitle, Hero, Section, Panel, Stat, Row, Avatar, Pill, Notice,
-Check, Tiles, Chips, Empty). Build every screen from those pieces; if something is missing, add it there, not as
-inline styles.
+The look lives in `frontend/src/styles.css` (tokens: colour, a 7-step type scale, the 4/8/12/16/24/32/48 spacing
+scale, radius, motion, one shadow), `frontend/src/theme.ts` (Ant Design restyled to the same values) and
+`frontend/src/components/ui.tsx` (Page, PageTitle, Hero, Section, Panel, Stat, Money, Pill, StatusPill, Row,
+Avatar, EntityHead, Notice, Check, Tiles, Chips, ActionButton, Progress, Skeleton, Kbd, EmptyState, Draft, Cards)
+plus `components/DataTable.tsx`. Build every screen from those pieces; if something is missing, add it there.
+Inline styles only for values computed at runtime (an avatar's colour, a progress width).
 
 - **Layout:** left sidebar with work-count badges (a bottom tab bar on phones), a main column, and a sticky right
   panel (`<Page rail={…}>`) for "what to do next". Detail pages pass `head` (who/what + the big number) so on a
@@ -238,16 +240,24 @@ inline styles.
 - **One big number per screen** (`Hero`), in words a non-accountant understands: "Paid to vendors this year".
   Home's chart is a running total; the big number follows the cursor.
 - **One primary action per screen**, in the right panel: a black pill (`type="primary" shape="round"`).
-  Secondary actions are soft grey pills (`className="soft"`), destructive ones soft red (`"danger-soft"`). If the
-  action exists but isn't allowed, show it disabled with the server's reason under it.
-- **Lists, not spreadsheets** (`Row`): logo, name and one line of context on the left, amount on the right.
-- **Plain language, never codes**: "Waiting for Elise", not `pending_approval`. Labels live in `format.ts`. Checks
-  are shown as their sentence (`Check`), never a code or a bare "flagged".
-- **Black and white; colour only means something**: green = done, amber = needs a person, red = blocked. Badges
-  only where they change what you'd do (held, waiting for release…), never on every row.
-- **One font**, Inter Tight (bundled, works offline). No serif. Few captions: if a sentence explains the UI, cut it.
-- Money arrives from the API as integer cents and goes through `money()`; the browser never does money math.
-- Must work on a phone (checked at 500px wide).
+  Secondary actions are soft grey pills (`className="soft"`), destructive ones soft red (`"danger-soft"`). Use
+  `ActionButton`: a pending state while it runs, and when not allowed it stays visible, disabled, with the server's
+  reason under it. Toasts say what happened and link to it when it happened elsewhere.
+- **Work queues are DataTables** (Inbox to review / on hold, Payments, Bank, Vendors, Approvals, findings, audit
+  log): sticky header, whole row clickable, j/k or arrows + Enter, skeleton while loading, a designed empty state.
+  Short columns have fixed widths; columns drop by the table's own width (container queries). **Home and side
+  panels keep `Row` lists**: logo, name, one line of context, amount on the right.
+- **Status = a dot + a word, everywhere** (`Pill` / `StatusPill`), one vocabulary in `format.ts`: Needs review,
+  On hold, Waiting for approval, Approved, Scheduled, Paid, Rejected. Amber = a person must act, red = blocked,
+  blue = in flow, green = done, grey = nothing to do. Never colour alone.
+- **Plain language, never codes**: "Waiting for Elise", not `pending_approval`. Checks are their sentence.
+- **Money** arrives as integer cents and is shown with `Money` (tabular digits, CAD/USD always written, credits
+  with a minus) or `money()` in sentences. The browser never adds, subtracts or rounds money: totals come from the
+  API.
+- **One font**, Inter Tight (bundled, works offline). Few captions. Body text ≥ 15px.
+- **Accessible**: visible focus rings, everything reachable by keyboard, aria labels on icon-only controls, AA
+  contrast (the darkest grey we put text on is `--ink-3`, 4.5:1 on grey), motion off under reduced-motion.
+- Checked at 1280×720 with 125% zoom (= 1024×576) and at 390px: `node e2e/overflow.mjs`.
 
 ### Decisions log
 
@@ -363,3 +373,14 @@ inline styles.
   every printed field is found on all 56 incoming documents, the Prairie scan's tax line is the one honest gap.
   Boxes are fractions of the page (0–1), so they fit any rendering. Page images: page 1 at 150 dpi, cached on disk
   by the file's sha256; scans are served exactly as received. If locating fails, the invoice is still read.
+- **Every total comes from the API** (T3 found the browser adding amounts on Payments, Approvals, Bank, Activity,
+  Home's chart and a vendor's PO balance): `/payments` returns per-tab totals, `/approvals/mine` a total, `/home`
+  the running total and range changes, `/bank` per-task totals, `/findings` recovery and tax totals, vendor POs
+  `remaining_cents`. The only arithmetic left in the browser is the width of a progress bar.
+- **The Home hero counts up once** (< 600 ms) from 0 to the API's number; the frames are animation only and the
+  number that stays is the server's. Off under prefers-reduced-motion.
+- **CAD/USD always written** (`$3,716.34 CAD`), even in a CAD-only company: it costs four characters and removes
+  every doubt about a number on a projector. Rejected: showing the code only for USD (inconsistent).
+- **Tables vs lists:** work queues became tables (scan columns, keyboard), Home and side panels stayed lists
+  (Wealthsimple feel). Columns hide by the table's width, not the window's: the same table sits in a 600px laptop
+  column and on a phone.

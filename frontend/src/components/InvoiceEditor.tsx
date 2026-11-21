@@ -45,26 +45,25 @@ export default function InvoiceEditor({ data, open, onClose, onSaved }: {
     if (ok) onClose();
   };
 
-  const two = { display: "flex", gap: 12 } as const;
   return (
     <Drawer open={open} onClose={onClose} size={600} title={null} destroyOnHidden>
       <h2 className="drawer-title">Correct this invoice</h2>
       <p className="muted">Compare with the original document. Every change is recorded with your name.</p>
-      <Form form={form} layout="vertical" onFinish={save} requiredMark={false} style={{ marginTop: 16 }}>
+      <Form form={form} layout="vertical" onFinish={save} requiredMark={false} className="mt-4">
         <Form.Item name="vendor_id" label="Vendor">
           <Select showSearch optionFilterProp="label" allowClear placeholder="Not in our vendor list"
             options={(ref?.vendors ?? []).map((v) => ({ value: v.vendor_id, label: `${v.legal_name} (${v.vendor_id})` }))} />
         </Form.Item>
-        <div style={two}>
-          <Form.Item name="vendor_invoice_number" label="Invoice number" style={{ flex: 1 }}><Input /></Form.Item>
-          <Form.Item name="invoice_date" label="Invoice date" style={{ flex: 1 }}><Input type="date" /></Form.Item>
-          <Form.Item name="due_date" label="Due" style={{ flex: 1 }}><Input type="date" /></Form.Item>
+        <div className="form-row">
+          <Form.Item name="vendor_invoice_number" label="Invoice number"><Input /></Form.Item>
+          <Form.Item name="invoice_date" label="Invoice date"><Input type="date" /></Form.Item>
+          <Form.Item name="due_date" label="Due"><Input type="date" /></Form.Item>
         </div>
-        <div style={two}>
-          <Form.Item name="ship_to_province" label="Delivered to" style={{ flex: 1 }}>
+        <div className="form-row">
+          <Form.Item name="ship_to_province" label="Delivered to">
             <Select options={Object.entries(PROVINCE).map(([code, name]) => ({ value: code, label: name }))} />
           </Form.Item>
-          <Form.Item name="department_id" label="Department" style={{ flex: 1 }}>
+          <Form.Item name="department_id" label="Department">
             <Select options={(ref?.departments ?? []).map((d) => ({ value: d.department_id, label: d.name }))} />
           </Form.Item>
         </div>
@@ -72,20 +71,20 @@ export default function InvoiceEditor({ data, open, onClose, onSaved }: {
           <Select showSearch optionFilterProp="label"
             options={(ref?.users ?? []).map((u) => ({ value: u.user_id, label: `${u.full_name} · ${u.title}` }))} />
         </Form.Item>
-        <div style={two}>
-          <Form.Item name="subtotal_cents" label="Subtotal" style={{ flex: 1 }}><Input prefix="$" /></Form.Item>
-          <Form.Item name="gst_hst_cents" label="GST / HST" style={{ flex: 1 }}><Input prefix="$" /></Form.Item>
-          <Form.Item name="pst_qst_cents" label="PST / QST" style={{ flex: 1 }}><Input prefix="$" /></Form.Item>
-          <Form.Item name="total_cents" label="Total" style={{ flex: 1 }}><Input prefix="$" /></Form.Item>
+        <div className="form-row">
+          <Form.Item name="subtotal_cents" label="Subtotal"><Input prefix="$" /></Form.Item>
+          <Form.Item name="gst_hst_cents" label="GST / HST"><Input prefix="$" /></Form.Item>
+          <Form.Item name="pst_qst_cents" label="PST / QST"><Input prefix="$" /></Form.Item>
+          <Form.Item name="total_cents" label="Total"><Input prefix="$" /></Form.Item>
         </div>
-        <h3 className="section-title" style={{ fontSize: 16, margin: "18px 0 12px" }}>As printed on the invoice</h3>
+        <h3 className="subhead">As printed on the invoice</h3>
         <Form.Item name="vendor_gst" label="GST/HST number"><Input /></Form.Item>
-        <div style={two}>
-          <Form.Item name="bank_institution" label="Institution" style={{ width: 110 }}><Input /></Form.Item>
-          <Form.Item name="bank_transit" label="Transit" style={{ width: 130 }}><Input /></Form.Item>
-          <Form.Item name="bank_account" label="Account" style={{ flex: 1 }}><Input /></Form.Item>
+        <div className="form-row">
+          <Form.Item name="bank_institution" label="Institution" className="field-sm"><Input /></Form.Item>
+          <Form.Item name="bank_transit" label="Transit" className="field-md"><Input /></Form.Item>
+          <Form.Item name="bank_account" label="Account"><Input /></Form.Item>
         </div>
-        <h3 className="section-title" style={{ fontSize: 16, margin: "18px 0 12px" }}>Ledger account per line</h3>
+        <h3 className="subhead">Ledger account per line</h3>
         {data.lines.map((l) => (
           <Form.Item key={l.line_no} name={`gl_${l.line_no}`} label={l.description} extra={l.coding_reason}>
             <Select showSearch optionFilterProp="label"
@@ -93,7 +92,7 @@ export default function InvoiceEditor({ data, open, onClose, onSaved }: {
           </Form.Item>
         ))}
         <Form.Item name="reason" label="Why (optional)"><Input placeholder="e.g. Corrected the transit from the original scan" /></Form.Item>
-        <Button type="primary" shape="round" size="large" htmlType="submit" style={{ marginTop: 8 }} block>Save and re-check</Button>
+        <Button type="primary" shape="round" size="large" htmlType="submit" className="mt-2" block>Save and re-check</Button>
       </Form>
     </Drawer>
   );

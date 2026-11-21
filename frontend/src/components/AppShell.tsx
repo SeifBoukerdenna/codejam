@@ -56,7 +56,7 @@ export default function AppShell() {
       </aside>
 
       <header className="mobile-top">
-        <NavLink to="/" className="brand" style={{ padding: 0 }}><span className="brand-mark">H</span>Harborline</NavLink>
+        <NavLink to="/" className="brand brand-compact"><span className="brand-mark">H</span>Harborline</NavLink>
         <UserSwitcher compact />
       </header>
 
@@ -77,14 +77,13 @@ function UserSwitcher({ compact }: { compact?: boolean }) {
   const { users, userId, setUserId } = useSession();
   return (
     <Select
-      className="user-select"
+      className={`user-select ${compact ? "compact" : ""}`}
       variant="borderless"
       suffix={null}
       showSearch={{ filterOption: (input, option) => (option?.search ?? "").includes(input.toLowerCase()) }}
       placeholder="Choose who you are"
       value={userId ?? undefined}
       onChange={setUserId}
-      style={{ width: compact ? 170 : "100%", height: 52 }}
       popupMatchSelectWidth={320}
       placement={compact ? "bottomRight" : "topLeft"}
       aria-label="Act as user"
@@ -98,9 +97,9 @@ function UserSwitcher({ compact }: { compact?: boolean }) {
         return (
           <span className="user-pill">
             <Avatar name={u.full_name} size="sm" round dark />
-            <span style={{ minWidth: 0 }}>
-              <span className="user-pill-name" style={{ display: "block" }}>{u.full_name}</span>
-              {!compact && <span className="user-pill-role" style={{ display: "block" }}>{ROLE[u.role] ?? u.role}</span>}
+            <span className="min-0">
+              <span className="user-pill-name">{u.full_name}</span>
+              {!compact && <span className="user-pill-role">{ROLE[u.role] ?? u.role}</span>}
             </span>
           </span>
         );
@@ -108,9 +107,9 @@ function UserSwitcher({ compact }: { compact?: boolean }) {
       optionRender={(option) => {
         const u = option.data.u;
         return (
-          <div className="user-pill" style={{ padding: "4px 0" }}>
+          <div className="user-pill user-option">
             <Avatar name={u.full_name} size="sm" round />
-            <div style={{ minWidth: 0 }}>
+            <div className="min-0">
               <div className="user-pill-name">{u.full_name}{u.status !== "active" && <span className="muted"> · {u.status.replace("_", " ")}</span>}</div>
               <div className="user-pill-role">{u.title} · {ROLE[u.role] ?? u.role}</div>
             </div>

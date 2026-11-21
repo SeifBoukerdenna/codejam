@@ -18,18 +18,7 @@ function addDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Running total for every day from Jan 1 to today (days with no payment repeat yesterday's total). */
-export function cumulative(daily: { date: string; total_cad_cents: number }[], today: string): Point[] {
-  const byDay = new Map(daily.map((d) => [d.date, d.total_cad_cents]));
-  const out: Point[] = [];
-  let running = 0;
-  for (let d = `${today.slice(0, 4)}-01-01`; d <= today; d = addDays(d, 1)) {
-    running += byDay.get(d) ?? 0;
-    out.push({ date: d, cents: running });
-  }
-  return out;
-}
-
+/** The API's running total (one point per day), trimmed to the chosen range. Dates only; no money maths here. */
 export function inRange(points: Point[], range: Range, today: string): Point[] {
   if (range === "YTD") return points;
   const start = addDays(today, range === "1M" ? -30 : -91);
@@ -75,8 +64,7 @@ export default function PaidChart({ points, range, onRange, onPoint }: {
     <div className="chart">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" tabIndex={0}
         aria-label={`Money paid out, running total, ${range}. Use the arrow keys to read values.`}
-        onPointerMove={onMove} onPointerLeave={() => pick(null)} onKeyDown={onKey} onBlur={() => pick(null)}
-        style={{ outline: "none" }}>
+        onPointerMove={onMove} onPointerLeave={() => pick(null)} onKeyDown={onKey} onBlur={() => pick(null)}>
         <defs>
           <linearGradient id="paid-wash" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#111111" stopOpacity="0.08" />
@@ -92,10 +80,10 @@ export default function PaidChart({ points, range, onRange, onPoint }: {
           </>
         )}
       </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div className="chart-ranges">
+      <div className="spread">
+        <div className="chart-ranges" role="group" aria-label="Chart range">
           {(["1M", "3M", "YTD"] as Range[]).map((r) => (
-            <button key={r} className={r === range ? "on" : ""} onClick={() => onRange(r)}>{r}</button>
+            <button key={r} className={r === range ? "on" : ""} aria-pressed={r === range} onClick={() => onRange(r)}>{r}</button>
           ))}
         </div>
         <span className="small muted">{shortDate(points[0].date)} – {shortDate(points.at(-1)!.date)}</span>

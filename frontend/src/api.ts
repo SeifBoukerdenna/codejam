@@ -80,6 +80,9 @@ export type HomeData = {
   payments_this_year: number;
   paid_by_month: MonthTotal[];
   paid_daily: { date: string; total_cad_cents: number; count: number }[];
+  /** Running total for every day from Jan 1 to today, computed by the API. */
+  paid_running: { date: string; cents: number }[];
+  paid_change: Record<"1M" | "3M", number>;
   bank_in_question_cents: number;
   bank_waiting: boolean;
   todo: Record<"bank_to_explain" | "emails_to_sort" | "replies_to_send" | "needs_review" | "on_hold" | "waiting_for_me" | "payments_to_release"
@@ -298,6 +301,7 @@ export type DoublePayment = {
 
 export type Recovery = DoublePayment & {
   vendor_email: string | null;
+  can_update: Permission;
   status: "to_recover" | "requested" | "recovered";
   requested_by_name: string | null;
   requested_at: string | null;
@@ -327,8 +331,11 @@ export type Findings = {
   to_recover_cad_cents: number;
   to_recover_count: number;
   split_invoices: { vendor_name: string; invoice_ids: string[]; combined_cad_cents: number; message: string }[];
+  recovery_totals: Record<"to_recover" | "requested" | "recovered", number>;
   tax_at_risk: TaxAtRisk[];
   tax_at_risk_cents: number;
+  tax_invoice_count: number;
+  tax_by_problem: { code: string; cents: number }[];
 };
 
 export type BankLine = {
@@ -361,6 +368,8 @@ export type BankPage = {
   missing_from_statement: { payment_id: string; invoice_id: string; vendor_name: string; amount_cents: number; paid_date: string }[];
   letter: string;
   bank_fee_account: string;
+  todo_totals: Record<"ask_bank" | "book_fee" | "mark_cashed", { count: number; cents: number }>;
+  in_question_cents: number;
   can_act: { allowed: boolean; reason: string | null };
 };
 
@@ -454,6 +463,7 @@ export type VendorDetail = {
     description: string;
     total_amount_cents: number;
     invoiced_cents: number;
+  remaining_cents: number;
     status: string;
     issue_date: string;
   }[];
@@ -479,4 +489,14 @@ export type MyApproval = {
   total_cad_cents: number;
   invoice_date: string | null;
   vendor_name: string | null;
+};
+
+export type MyApprovals = { items: MyApproval[]; total_cad_cents: number };
+
+export type PaymentsPage = {
+  payments: PaymentRow[];
+  summary: Record<string, { count: number; total_cad_cents: number; next_date: string | null }>;
+  tabs: Record<"approved" | "prepared" | "held" | "going" | "outstanding" | "settled", { count: number; total_cad_cents: number }>;
+  going_out: { count: number; total_cad_cents: number };
+  about_to_pay_twice: DoublePayment[];
 };
