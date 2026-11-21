@@ -1,12 +1,19 @@
-"""HTTP API. Step 1 only exposes what the UI needs to prove the stack works: health, the user list for the
-demo user switcher, and row counts of the seeded tables."""
+"""HTTP API entry point. Each area of the app has its own router file in app/routes/.
+
+Money in every JSON response is integer cents (fields ending in _cents). The UI only formats it, it never
+does money arithmetic.
+"""
 
 from fastapi import Depends, FastAPI
 
 from app import config
 from app.db import get_conn
+from app.routes import activity, home, inbox, invoices, payments, vendors
 
 app = FastAPI(title="Harborline AP")
+
+for module in (home, inbox, invoices, payments, vendors, activity):
+    app.include_router(module.router)
 
 SEEDED_TABLES = [
     "departments", "users", "gl_accounts", "tax_codes", "fx_rates", "approval_policies", "vendors",
@@ -23,8 +30,6 @@ def health(conn=Depends(get_conn)):
 
 @app.get("/api/users")
 def list_users(conn=Depends(get_conn)):
-    # DECISION: no real login. The UI's user switcher sends the chosen user_id in an X-User-Id header and the
-    # server enforces every permission from that user's role and status (see auth.py, step 3).
     return conn.execute(
         """SELECT u.user_id, u.full_name, u.title, u.role, u.status, u.department_id, d.name AS department
            FROM users u JOIN departments d USING (department_id)

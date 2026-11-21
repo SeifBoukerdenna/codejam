@@ -1,0 +1,278 @@
+/* Harborline AP design system.
+ *
+ * Principles (borrowed from consumer finance apps like Wealthsimple and Robinhood):
+ *   - one big number per screen, in plain words ("Paid to vendors this year")
+ *   - lists, not spreadsheets: name on the left, amount on the right
+ *   - black and white, colour only for state (paid / needs attention / blocked) or data
+ *   - one primary action per screen, a black pill button
+ *   - lots of white space, a single narrow column
+ * Ant Design provides the interactive controls; this file owns the look of everything else.
+ */
+
+:root {
+  --bg: #ffffff;
+  --surface-subtle: #f6f6f4;
+  --surface-hover: #efefec;
+  --ink: #111111;
+  --ink-2: #52514e;   /* secondary text */
+  --ink-3: #767570;   /* muted text, still >= 4.5:1 on white */
+  --line: #ececea;    /* hairlines */
+
+  --accent: #2a78d6;  /* data (chart bars), validated for contrast */
+  --accent-strong: #1f63b5;
+
+  /* State colours: always paired with a text label, never colour alone. */
+  --positive: #0f7b3d;  --positive-bg: #e8f5ec;
+  --warning: #8f5400;   --warning-bg: #fff4dc;
+  --negative: #c0302f;  --negative-bg: #fdecec;
+  --info: #1f63b5;      --info-bg: #eaf2fc;
+
+  --radius: 16px;
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Instrument Serif", Georgia, serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* ── top bar ── */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.topbar-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  height: 64px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.brand { font-weight: 700; font-size: 17px; letter-spacing: -0.01em; white-space: nowrap; }
+.nav {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav a {
+  padding: 7px 14px;
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.nav a:hover { background: var(--surface-hover); color: var(--ink); }
+.nav a.active { background: var(--ink); color: #fff; }
+
+.user-menu { display: flex; align-items: center; gap: 8px; flex: none; }
+.user-select { width: 200px; }
+
+/* ── page scaffolding ── */
+
+.page { max-width: 720px; margin: 0 auto; padding: 40px 16px 96px; }
+
+.page-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 44px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+}
+.page-subtitle { color: var(--ink-2); font-size: 16px; margin: 0; }
+
+.back-link { display: inline-flex; gap: 6px; color: var(--ink-2); font-weight: 500; margin-bottom: 24px; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
+.back-link:hover { color: var(--ink); }
+
+.section { margin-top: 44px; }
+.section-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.section-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.section-extra { color: var(--ink-2); font-weight: 500; }
+.section-extra a:hover { color: var(--ink); }
+.section-caption { color: var(--ink-2); margin: 0 0 12px; }
+
+.muted { color: var(--ink-2); }
+.small { font-size: 13px; }
+
+/* ── hero number: the one figure each screen leads with ── */
+
+.hero-label { color: var(--ink-2); font-weight: 500; font-size: 15px; }
+.hero-value {
+  font-size: 52px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin: 2px 0 6px;
+}
+.hero-caption { color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* ── lists ── */
+
+.list { border-top: 1px solid var(--line); }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+  cursor: default;
+}
+a.row, button.row { cursor: pointer; }
+a.row:hover, button.row:hover { background: var(--surface-subtle); }
+button.row { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line); font: inherit; color: inherit; text-align: left; }
+.row-main { flex: 1; min-width: 0; }
+.row-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-sub { color: var(--ink-2); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-end { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
+.row-amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.avatar {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface-subtle);
+  color: var(--ink-2);
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+.avatar.small { width: 30px; height: 30px; font-size: 12px; }
+.avatar.large { width: 56px; height: 56px; font-size: 18px; }
+.avatar.dark { background: var(--ink); color: #fff; }
+
+/* ── status pill: dot + words, never colour alone ── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--surface-subtle);
+  color: var(--ink-2);
+}
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.positive { background: var(--positive-bg); color: var(--positive); }
+.pill.warning { background: var(--warning-bg); color: var(--warning); }
+.pill.negative { background: var(--negative-bg); color: var(--negative); }
+.pill.info { background: var(--info-bg); color: var(--info); }
+
+/* ── home: things that need the current user ── */
+
+.tasks { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 12px; }
+.task { display: block; padding: 18px; border-radius: var(--radius); background: var(--surface-subtle); }
+.task:hover { background: var(--surface-hover); }
+.task-count { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+.task-label { color: var(--ink-2); font-weight: 500; }
+.task.warning .task-count { color: var(--warning); }
+.task.negative .task-count { color: var(--negative); }
+
+/* ── notices: a problem explained in a sentence ── */
+
+.notice { display: flex; gap: 12px; padding: 16px; border-radius: var(--radius); background: var(--surface-subtle); margin-top: 12px; }
+.notice-icon { font-size: 18px; line-height: 1.4; color: var(--ink-2); }
+.notice-title { font-weight: 600; }
+.notice-body { color: var(--ink-2); }
+.notice.warning { background: var(--warning-bg); } .notice.warning .notice-icon { color: var(--warning); }
+.notice.negative { background: var(--negative-bg); } .notice.negative .notice-icon { color: var(--negative); }
+.notice.positive { background: var(--positive-bg); } .notice.positive .notice-icon { color: var(--positive); }
+.notice.info { background: var(--info-bg); } .notice.info .notice-icon { color: var(--info); }
+
+/* ── key/value details ── */
+
+.kv { display: grid; grid-template-columns: minmax(120px, 180px) 1fr; gap: 12px 16px; margin: 12px 0 0; }
+.kv dt { color: var(--ink-2); }
+.kv dd { margin: 0; font-weight: 500; }
+
+/* ── invoice totals ── */
+
+.totals { margin: 12px 0 0 auto; max-width: 320px; }
+.totals > div { display: flex; justify-content: space-between; padding: 5px 0; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.totals > div.grand { color: var(--ink); font-weight: 600; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 10px; }
+
+/* ── timeline (invoice history) ── */
+
+.timeline { list-style: none; margin: 16px 0 0; padding: 0; }
+.timeline li { position: relative; padding: 0 0 22px 30px; }
+.timeline li::before { content: ""; position: absolute; left: 5px; top: 20px; bottom: 0; width: 2px; background: var(--line); }
+.timeline li:last-child::before { display: none; }
+.tl-dot { position: absolute; left: 0; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--ink); }
+.tl-dot.pending { background: #fff; border: 2px solid var(--ink-3); }
+.tl-dot.positive { background: var(--positive); }
+.tl-dot.negative { background: var(--negative); }
+.tl-dot.warning { background: var(--warning); }
+.tl-title { font-weight: 500; }
+.tl-sub { color: var(--ink-2); font-size: 14px; }
+.tl-note { margin-top: 4px; font-size: 14px; color: var(--ink-2); font-style: italic; }
+
+/* ── empty states ── */
+
+.empty { text-align: center; padding: 56px 16px; }
+.empty-icon { font-size: 36px; color: var(--positive); }
+.empty-title { font-size: 18px; font-weight: 600; margin-top: 8px; }
+.empty-body { color: var(--ink-2); max-width: 380px; margin: 4px auto 0; }
+
+/* ── chart ── */
+
+.chart { position: relative; margin-top: 20px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .bar-hit { cursor: default; outline: none; }
+.chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  pointer-events: none;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+.chart-tooltip strong { display: block; font-size: 15px; }
+.chart-tooltip span { color: var(--ink-2); font-size: 13px; }
+.chart-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; color: var(--ink-2); font-size: 13px; }
+.text-button { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+.mini-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+.mini-table th, .mini-table td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.mini-table td.num, .mini-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── email body ── */
+
+.email-body { white-space: pre-wrap; line-height: 1.6; margin-top: 20px; }
+
+@media (max-width: 640px) {
+  /* Phone: brand + user on the first line, the nav on its own scrollable line below. */
+  .topbar-inner { flex-wrap: wrap; height: auto; padding: 10px 16px 8px; row-gap: 6px; }
+  .user-menu { margin-left: auto; }
+  .user-select { width: 150px; }
+  .nav { order: 3; flex-basis: 100%; }
+  .page { padding-top: 28px; }
+  .page-title { font-size: 36px; }
+  .hero-value { font-size: 40px; }
+}

@@ -13,7 +13,7 @@ Needs Docker (Docker Desktop on macOS/Windows).
 make up        # db + api + web; seeds the database on first start
 ```
 
-- UI: http://localhost:5173 (pick a user in the top-right switcher)
+- UI: http://localhost:5173 (pick a user in the top-right switcher, or open a link with `?as=U003`)
 - API docs: http://localhost:8000/docs
 
 | Command       | What it does |
@@ -32,8 +32,10 @@ No `make`? Each target is one `docker compose` command; see the [Makefile](Makef
 ```
 backend/app/schema.sql   every table, with comments on why it looks that way
 backend/app/seed.py      loads every CSV + inbox/emails.json
-backend/app/main.py      HTTP API
+backend/app/main.py      HTTP API entry point; one router per area in backend/app/routes/
 backend/tests/           pytest, incl. the trap checklist
-frontend/src/            React + Ant Design UI
+frontend/src/pages/      one file per screen (Home, Inbox, Approvals, Payments, Vendors, Activity, details)
+frontend/src/components/ shared building blocks (ui.tsx) and the app shell
+frontend/src/styles.css  the design system; UI rules are in CLAUDE.md
 data/brim_ap_dataset/    the dataset (CSVs, inbox, incoming invoices)
 ```

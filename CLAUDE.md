@@ -225,6 +225,24 @@ Brim-specific bonuses worth doing: single-use virtual card payments, and "alread
 - Commit often with clear messages. Don't commit `.env` or API keys.
 - If a requirement is ambiguous, pick the simplest reasonable reading, leave a `// DECISION:` comment explaining it, and add it to the list below so we can explain it to the judges.
 
+### UI rules (inspired by Wealthsimple / Robinhood: extremely simple)
+
+The look lives in `frontend/src/styles.css` (tokens + classes), `frontend/src/theme.ts` (Ant Design restyled)
+and `frontend/src/components/ui.tsx` (Page, PageTitle, Hero, Section, Row, Pill, Notice, Empty). Build every
+screen from those pieces; if something is missing, add it there, not as inline styles.
+
+- **One big number per screen** (`Hero`), in words a non-accountant understands: "Paid to vendors this year".
+- **Lists, not spreadsheets** (`Row`): name and one line of context on the left, amount on the right.
+  Use a table only when people genuinely compare columns.
+- **Plain language, never codes**: "Waiting for Elise to approve", not `pending_approval`. Status labels live in
+  `format.ts`. Check results are shown as their sentence, never as a code or a bare "flagged".
+- **Black and white; colour only means something**: green = done/good, amber = needs a human, red = blocked.
+  Always with words (pill or notice), never colour alone. Chart data uses the blue accent.
+- **One primary action per screen**: a black pill button (`<Button type="primary" shape="round" size="large">`).
+- Serif (Instrument Serif) only for page titles; everything else, including big numbers, is Inter.
+- Money arrives from the API as integer cents and goes through `money()`; the browser never does money math.
+- Single narrow column (720px). Must work on a phone (checked at 500px wide).
+
 ### Decisions log
 
 - **PO balance compared on the total including tax.** P12's text says "total", and the trap map's expected
