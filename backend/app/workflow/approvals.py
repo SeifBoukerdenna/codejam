@@ -1,7 +1,7 @@
 """Submitting an invoice for approval, and approving or declining a step. Permission checks happen in the
 API layer through auth.can(); these functions assume the caller is allowed."""
 
-from app import audit
+from app import audit, config
 from app.workflow.routing import plan_route
 
 
@@ -48,8 +48,8 @@ def withdraw(conn, invoice_id: str, actor: str | None, reason: str) -> None:
 
 def act(conn, invoice: dict, step: dict, user: dict, approve: bool, comment: str | None) -> None:
     action = "approved" if approve else "rejected"
-    conn.execute("UPDATE approvals SET action = %s, acted_at = now(), comment = %s WHERE approval_id = %s",
-                 (action, comment, step["approval_id"]))
+    conn.execute("UPDATE approvals SET action = %s, acted_at = now() AT TIME ZONE %s, comment = %s WHERE approval_id = %s",
+                 (action, config.LOCAL_TZ, comment, step["approval_id"]))
     audit.log(conn, actor=user["user_id"], on_behalf_of=step["on_behalf_of_user_id"],
               action=f"invoice.{'approve' if approve else 'decline'}", entity_type="invoice",
               entity_id=invoice["invoice_id"], before={"step": step["step_no"], "action": "pending"},

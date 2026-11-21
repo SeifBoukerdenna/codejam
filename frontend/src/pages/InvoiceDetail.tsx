@@ -69,43 +69,60 @@ const EVENT_WORDS: Record<string, string> = {
 function historySteps(d: Data, today: string): Step[] {
   const inv = d.invoice;
   const steps: Step[] = [];
-  if (inv.source === "history") {
-    if (inv.received_date) steps.push({ key: "received", title: "Received", sub: longDate(inv.received_date), dot: "" });
-  } else {
-    // Approvals are drawn from the approval steps below (with their routing notes), so skip them here.
+
+  if (inv.source !== "history") {
+    // New invoices: the audit log IS the history, in the order things happened. Approval events get their
+    // role, rules and routing note from the approval step they belong to.
+    const stepByNo = new Map(d.approvals.map((a) => [a.step_no, a]));
     for (const e of d.history) {
-      if (["invoice.approve", "invoice.decline", "invoice.fully_approved", "invoice.rejected"].includes(e.action)) continue;
+      if (e.action === "invoice.approve" || e.action === "invoice.decline") {
+        const a = stepByNo.get(Number((e.after as { step?: number } | null)?.step));
+        const role = a ? APPROVER_ROLE[a.approver_role] ?? a.approver_role : "";
+        steps.push({
+          key: `e${e.event_id}`,
+          title: `${e.action === "invoice.approve" ? "Approved" : "Declined"} by ${e.actor_name}`,
+          sub: [role, a?.rule_ids, e.on_behalf_of_name && `on behalf of ${e.on_behalf_of_name}`, instant(e.created_at)]
+            .filter(Boolean).join(" · "),
+          dot: e.action === "invoice.approve" ? "" : "negative",
+          note: e.reason ?? a?.routing_note ?? undefined,
+        });
+        continue;
+      }
+      if (e.action === "invoice.fully_approved" || e.action === "invoice.rejected") continue;
       steps.push({
         key: `e${e.event_id}`,
         title: `${EVENT_WORDS[e.action] ?? e.action.replace(/[._]/g, " ")}${e.actor_name ? ` · ${e.actor_name}` : ""}`,
-        sub: instant(e.created_at), dot: e.action.includes("hold") ? "negative" : "", note: e.reason ?? undefined,
+        sub: instant(e.created_at), dot: e.action.includes("hold") ? "negative" : e.action === "payment.settle" ? "positive" : "",
+        note: e.reason ?? undefined,
       });
     }
+    // Steps that haven't happened yet come last.
+    for (const a of d.approvals.filter((x) => x.action === "pending")) {
+      const role = APPROVER_ROLE[a.approver_role] ?? a.approver_role;
+      steps.push({ key: a.approval_id, title: `Waiting for ${a.approver_name}`,
+        sub: [role, a.rule_ids, a.on_behalf_of_name && `on behalf of ${a.on_behalf_of_name}`].filter(Boolean).join(" · "),
+        dot: "pending", note: a.routing_note ?? undefined });
+    }
+    return steps;
   }
+
+  // History invoices (from the dataset) have no audit events: rebuild the story from approvals and payments.
+  if (inv.received_date) steps.push({ key: "received", title: "Received", sub: longDate(inv.received_date), dot: "" });
   for (const a of d.approvals) {
     const role = APPROVER_ROLE[a.approver_role] ?? a.approver_role;
-    const rules = a.rule_ids ? ` · ${a.rule_ids}` : "";
-    const delegated = a.on_behalf_of_name ? ` · on behalf of ${a.on_behalf_of_name}` : "";
-    if (a.action === "pending") {
-      steps.push({ key: a.approval_id, title: `Waiting for ${a.approver_name}`, sub: `${role}${rules}${delegated}`,
-        dot: "pending", note: a.routing_note ?? undefined });
-    } else {
-      steps.push({ key: a.approval_id, title: `${a.action === "approved" ? "Approved" : "Declined"} by ${a.approver_name}`,
-        sub: `${role}${rules}${delegated} · ${dateTime(a.acted_at, today)}`, dot: a.action === "approved" ? "" : "negative",
-        note: a.comment ?? a.routing_note ?? undefined });
-    }
+    steps.push({ key: a.approval_id, title: `${a.action === "approved" ? "Approved" : "Declined"} by ${a.approver_name}`,
+      sub: `${role} · ${dateTime(a.acted_at, today)}`, dot: a.action === "approved" ? "" : "negative",
+      note: a.comment ?? undefined });
   }
-  if (inv.source === "history") {
-    for (const p of d.payments) {
-      const method = METHOD[p.method] ?? p.method;
-      const who = [p.prepared_by_name && `prepared by ${p.prepared_by_name}`, p.released_by_name && `released by ${p.released_by_name}`]
-        .filter(Boolean).join(", ");
-      const title = p.status === "settled" ? `Paid by ${method.toLowerCase()}`
-        : p.status === "outstanding" ? "Cheque sent, not cashed yet" : `Payment ${p.status} · ${method.toLowerCase()}`;
-      const when = p.paid_date ? shortDate(p.paid_date, today) : `For ${shortDate(p.scheduled_date, today)}`;
-      steps.push({ key: p.payment_id, title, sub: `${when} · ${p.payment_id}${who ? ` · ${who}` : ""}`,
-        dot: p.status === "settled" ? "positive" : p.status === "outstanding" ? "" : "pending" });
-    }
+  for (const p of d.payments) {
+    const method = METHOD[p.method] ?? p.method;
+    const who = [p.prepared_by_name && `prepared by ${p.prepared_by_name}`, p.released_by_name && `released by ${p.released_by_name}`]
+      .filter(Boolean).join(", ");
+    const title = p.status === "settled" ? `Paid by ${method.toLowerCase()}`
+      : p.status === "outstanding" ? "Cheque sent, not cashed yet" : `Payment ${p.status} · ${method.toLowerCase()}`;
+    const when = p.paid_date ? shortDate(p.paid_date, today) : `For ${shortDate(p.scheduled_date, today)}`;
+    steps.push({ key: p.payment_id, title, sub: `${when} · ${p.payment_id}${who ? ` · ${who}` : ""}`,
+      dot: p.status === "settled" ? "positive" : p.status === "outstanding" ? "" : "pending" });
   }
   return steps;
 }
