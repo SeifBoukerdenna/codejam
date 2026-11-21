@@ -352,3 +352,6 @@ inline styles.
   briefly unsigned). Production: the key in a KMS, and the head hash copied outside the database regularly, so
   deleting the newest events (which leaves no broken link) is caught too. Verifying is for the auditor and
   controllers (it's read-only, so the auditor may run it).
+- **Worker visibility timeout:** a job left `running` for more than 5 minutes (its worker died) is claimed again by
+  another worker; after 3 abandons it fails with a plain sentence. Reading a document takes 1–5 s. Rejected: worker
+  heartbeats (more moving parts than this scale needs).

@@ -19,15 +19,30 @@ from app.pipeline import process_document
 
 MAX_ATTEMPTS = 3
 IDLE_SLEEP_SECONDS = 1.0
+# DECISION: a "visibility timeout", like a cloud queue's. A worker that dies mid-document (killed, machine off)
+# never marks its job done; after this long another worker may take it again. Reading a document takes 1–5 s,
+# so 5 minutes is far longer than any real job. Rejected: worker heartbeats (more moving parts for this scale).
+STALE_AFTER_SECONDS = 300
 
 
 def claim(url: str | None, worker_id: str) -> dict | None:
+    """Take the next job: a queued one, or one whose worker stopped answering (claimed too long ago)."""
     with db.transaction(url) as conn:
+        # A job that has already been abandoned MAX_ATTEMPTS times is given up on, in plain words.
+        for stuck in conn.execute(
+                """UPDATE extraction_jobs SET status = 'failed', finished_at = now(),
+                          error = 'The worker reading this file stopped responding 3 times. Upload it again.'
+                   WHERE status = 'running' AND attempts >= %s AND claimed_at < now() - make_interval(secs => %s)
+                   RETURNING job_id, document_id""", (MAX_ATTEMPTS, STALE_AFTER_SECONDS)).fetchall():
+            audit.log(conn, actor=None, action="document.read_failed", entity_type="document",
+                      entity_id=str(stuck["document_id"]), reason="Abandoned by its worker 3 times")
         return conn.execute(
             """UPDATE extraction_jobs SET status = 'running', worker_id = %s, claimed_at = now(), attempts = attempts + 1
-               WHERE job_id = (SELECT job_id FROM extraction_jobs WHERE status = 'queued'
+               WHERE job_id = (SELECT job_id FROM extraction_jobs
+                               WHERE status = 'queued'
+                                  OR (status = 'running' AND claimed_at < now() - make_interval(secs => %s))
                                ORDER BY job_id FOR UPDATE SKIP LOCKED LIMIT 1)
-               RETURNING *""", (worker_id,)).fetchone()
+               RETURNING *""", (worker_id, STALE_AFTER_SECONDS)).fetchone()
 
 
 def run_job(url: str | None, job: dict) -> None:

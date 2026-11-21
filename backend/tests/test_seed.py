@@ -7,7 +7,7 @@ from decimal import Decimal
 import psycopg
 import pytest
 
-from app import config
+from app import config, db
 from app.seed import TABLES
 
 
@@ -61,3 +61,29 @@ def test_audit_log_is_append_only(conn):
     conn.rollback()
     with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
         conn.execute("DELETE FROM audit_events")
+
+
+def test_a_job_abandoned_by_a_dead_worker_is_taken_again(db_url):
+    """Visibility timeout (worker.STALE_AFTER_SECONDS): a job stuck in 'running' too long goes to another worker;
+    one abandoned MAX_ATTEMPTS times is failed with a plain reason."""
+    from app import intake, worker
+    with db.transaction(db_url) as c:
+        doc_id, _ = intake.store_document(c, filename="stuck.pdf", content=b"%PDF-1.4 stuck test", source="upload")
+        c.execute("""UPDATE extraction_jobs SET status = 'running', worker_id = 'dead-worker', attempts = 1,
+                     claimed_at = now() - interval '10 minutes' WHERE document_id = %s""", (doc_id,))
+    try:
+        job = worker.claim(db_url, "healthy-worker")
+        assert job["document_id"] == doc_id and job["worker_id"] == "healthy-worker" and job["attempts"] == 2
+        assert worker.claim(db_url, "another-worker") is None       # freshly claimed: not stale any more
+
+        with db.transaction(db_url) as c:
+            c.execute("""UPDATE extraction_jobs SET attempts = %s, claimed_at = now() - interval '10 minutes'
+                         WHERE document_id = %s""", (worker.MAX_ATTEMPTS, doc_id))
+        assert worker.claim(db_url, "healthy-worker") is None
+        with db.connect(db_url) as c:
+            failed = c.execute("SELECT status, error FROM extraction_jobs WHERE document_id = %s", (doc_id,)).fetchone()
+        assert failed["status"] == "failed" and "stopped responding" in failed["error"]
+    finally:
+        with db.transaction(db_url) as c:
+            c.execute("DELETE FROM extraction_jobs WHERE document_id = %s", (doc_id,))
+            c.execute("DELETE FROM documents WHERE document_id = %s", (doc_id,))
