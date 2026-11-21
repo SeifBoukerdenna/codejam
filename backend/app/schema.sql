@@ -101,7 +101,10 @@ CREATE TABLE vendors (
     ap_contact_email          TEXT,
     requires_po               BOOLEAN NOT NULL,
     status                    TEXT NOT NULL CHECK (status IN ('active', 'pending_review', 'on_hold')),
-    onboarded_at              DATE
+    onboarded_at              DATE,
+    -- app columns
+    created_by                TEXT,                 -- who onboarded it in the app (can't also approve it)
+    status_reason             TEXT                  -- why it is on hold, in words
 );
 
 CREATE TABLE bank_change_history (
@@ -120,7 +123,8 @@ CREATE TABLE bank_change_history (
     callback_by_user_id   TEXT REFERENCES users,
     callback_at           TIMESTAMPTZ,
     callback_phone        TEXT,
-    callback_outcome      TEXT
+    callback_outcome      TEXT CHECK (callback_outcome IN ('confirmed', 'rejected'))
+    -- A change is "pending" while verified_by_callback is false and nobody has called yet (outcome NULL).
 );
 
 CREATE TABLE contracts (
@@ -243,6 +247,8 @@ CREATE TABLE invoices (
     email_id               TEXT REFERENCES emails,
     is_credit_note         BOOLEAN NOT NULL DEFAULT false,
     hold_reason            TEXT,
+    reviewed_by            TEXT REFERENCES users,   -- AP clerk who confirmed the extracted fields
+    reviewed_at            TIMESTAMPTZ,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

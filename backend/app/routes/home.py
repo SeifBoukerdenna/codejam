@@ -50,14 +50,18 @@ def home(conn=Depends(get_conn), user=Depends(current_user)):
             conn, "SELECT count(*) AS n FROM approvals WHERE action = 'pending' AND approver_user_id = %s",
             (user_id,)),
         "payments_to_release": _count(conn, "SELECT count(*) AS n FROM payments WHERE status = 'prepared'"),
+        "approved_to_pay": _count(conn, "SELECT count(*) AS n FROM invoices WHERE status = 'approved' AND NOT is_credit_note"),
+        "payments_held": _count(conn, "SELECT count(*) AS n FROM payments WHERE status = 'held'"),
     }
 
+    # "Going out next" = everything queued to leave: prepared (waiting for release), released and scheduled.
     scheduled = conn.execute(
         """SELECT count(*) AS count, coalesce(sum(amount_cad_cents), 0)::bigint AS total_cad_cents
-           FROM payments WHERE status = 'scheduled'"""
+           FROM payments WHERE status IN ('prepared', 'released', 'scheduled')"""
     ).fetchone()
     upcoming = conn.execute(
-        f"{PAYMENT_ROWS_SQL} WHERE p.status = 'scheduled' ORDER BY p.scheduled_date, p.payment_id LIMIT 5"
+        f"{PAYMENT_ROWS_SQL} WHERE p.status IN ('prepared', 'released', 'scheduled') "
+        f"ORDER BY p.scheduled_date, p.payment_id LIMIT 5"
     ).fetchall()
 
     return {

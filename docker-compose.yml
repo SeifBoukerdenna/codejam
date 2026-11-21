@@ -2,7 +2,8 @@
 #   db   Postgres: all data, the extraction job queue, the append-only audit log
 #   api  FastAPI: business rules, checks, approval workflow, permissions. Seeds the database on first start.
 #   web  React UI on http://localhost:5173 (proxies /api to the api service)
-# The OCR worker is added in step 2.
+#   worker  reads documents off the queue (PDF text layer, Tesseract OCR for scans) and creates invoices.
+#           Run more with `docker compose up --scale worker=3`, or on another machine (see README).
 
 services:
   db:
@@ -35,6 +36,20 @@ services:
       db:
         condition: service_healthy
     command: sh -c "python -m app.seed --if-empty && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  worker:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://ap:ap@db:5432/ap
+      DATA_DIR: /data/brim_ap_dataset
+      AP_TODAY: "2026-11-02"
+    volumes:
+      - ./backend:/app/backend
+      - ./data:/data:ro
+    depends_on:
+      api:
+        condition: service_started    # the api seeds the schema first
+    command: sh -c "sleep 3 && python -m app.worker"
 
   web:
     image: node:24-alpine

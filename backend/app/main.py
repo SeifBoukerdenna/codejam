@@ -1,4 +1,5 @@
 """HTTP API entry point. Each area of the app has its own router file in app/routes/.
+Permissions are decided in app/auth.py (can), never in the routes themselves.
 
 Money in every JSON response is integer cents (fields ending in _cents). The UI only formats it, it never
 does money arithmetic.
