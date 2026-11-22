@@ -384,3 +384,23 @@ Inline styles only for values computed at runtime (an avatar's colour, a progres
 - **Tables vs lists:** work queues became tables (scan columns, keyboard), Home and side panels stayed lists
   (Wealthsimple feel). Columns hide by the table's width, not the window's: the same table sits in a 600px laptop
   column and on a phone.
+- **Invoice page layout:** the real document on the left (sticky, zoomable), the one next action top right, then the
+  checks, "What we read", details, lines and the invoice's life. Below 1180px it stacks: next action → document → rest.
+  Rejected: a "Document" tab (it hides the evidence behind a click, and the reviewer's job is comparing the two).
+- **Where-we-read-it boxes** are drawn over the page image as % of the page; hovering a field lights its box and the
+  other way round. Dashed box = read by OCR. A field with no box simply has none (see "Where each field was read").
+- **Picking an OCR reading** ("Use “$5541”") is the normal audited edit (PATCH, reason "Picked the OCR reading …"),
+  and the checks re-run: a wrong pick is caught by the bank-account check like any other. Every distinct reading is
+  offered, malformed ones too, because the person has the paper in front of them. After a person sets a field, its
+  "please confirm" note becomes "Set by <name>".
+- **Pipeline strip and Life of this invoice** are built in the browser from what the invoice page already gets
+  (invoice, email, extraction, approvals, payments, audit events, bank line): no money is computed, only words.
+  Rejected: a /pipeline endpoint returning the same facts a second time.
+- **Bank statement line on the invoice page:** only bank transfers and cheques are looked for (card payments go through
+  the card account). Settled in the last 3 days and not on the statement = "In transit", as on the Bank page.
+- **Keyboard on the invoice page:** A approve, D decline, P pay (prepare, or release), E correct, [ ] previous/next,
+  ? the list. Single keys, ignored while typing or in a dialog. A refused key shows the server's reason, the same
+  sentence a disabled button shows. [ and ] walk the list the invoice was opened from: the DataTable stores that list
+  in sessionStorage (this tab only). Rejected: a server "next invoice" endpoint (it would have to know which list and
+  filter you came from).
+- **Times are written "7:19 PM"** everywhere (en-US style), so a page never mixes "PM" and "p.m.".

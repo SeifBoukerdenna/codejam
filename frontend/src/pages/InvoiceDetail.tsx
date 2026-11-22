@@ -1,152 +1,73 @@
-import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, FileSearchOutlined } from "@ant-design/icons";
-import { Button } from "antd";
-import { useState } from "react";
+import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
+import { App, Button, Tooltip } from "antd";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { send, type Email, type InvoiceDetail as Data, type Permission } from "../api";
+import { send, type Email, type FieldSource, type InvoiceDetail as Data, type Permission } from "../api";
 import { ReasonModal, useRunner } from "../components/actions";
-import InvoiceEditor from "../components/InvoiceEditor";
 import CardPanel from "../components/CardPanel";
-import { DataTable } from "../components/DataTable";
-import { ActionButton, Avatar, Check, Chips, EntityHead, Hero, Loading, Money, Notice, Page, Panel, Pill, Section, Stat, StatusPill,
-  Tiles } from "../components/ui";
+import { DataTable, readQueue } from "../components/DataTable";
+import DocumentViewer from "../components/DocumentViewer";
+import InvoiceEditor from "../components/InvoiceEditor";
+import { lifeEvents, pipelineSteps, statusSentence } from "../components/invoiceStory";
+import PipelineStrip from "../components/PipelineStrip";
+import { ShortcutsHelp, useShortcuts } from "../components/Shortcuts";
+import { ActionButton, Avatar, Check, Chips, EntityHead, Hero, Kbd, Loading, Money, Notice, Panel, Pill, Section, Stat,
+  StatusPill, Tiles } from "../components/ui";
 import VendorForm from "../components/VendorForm";
-import {
-  APPROVER_ROLE, INVOICE_STATUS, METHOD, PAYMENT_STATUS, PROVINCE, dateTime, instant, longDate, money, shortDate, statusOf,
-  type Tone,
-} from "../format";
+import { APPROVER_ROLE, METHOD, PROVINCE, money, plural, shortDate, type Tone } from "../format";
 import { useApi, useSession } from "../session";
 
-// One page tells the whole story of an invoice. The right panel holds the ONE next action for whoever is
-// looking, plus who approves it and how it gets paid.
+// The hero screen. Left: the real document, with a box around every value we read. Right: what we read, what the
+// checks found, and the ONE next action for whoever is looking. On top: where the invoice is in its life.
 
 const SEVERITY_TONE: Record<string, Tone> = { block: "negative", warn: "warning", info: "info" };
 // A passed check (TAX_OK, PO_MATCHED...) is good news.
 const checkTone = (c: { severity: string; code: string }): Tone =>
   c.severity === "info" && /_OK$|_MATCHED$/.test(c.code) ? "positive" : SEVERITY_TONE[c.severity];
 
-function statusSentence(d: Data, today: string, me?: string | null): string {
-  const inv = d.invoice;
-  const pay = d.payments.filter((p) => p.status !== "cancelled").at(-1);
-  const method = pay ? (METHOD[pay.method] ?? pay.method).toLowerCase() : "";
-  switch (inv.status) {
-    case "paid":
-      if (inv.is_credit_note) return "Deducted from a payment to this vendor";
-      if (!pay) return "Paid";
-      if (pay.status === "outstanding") return `Cheque sent ${shortDate(pay.paid_date, today)}, not cashed yet`;
-      return `Paid ${shortDate(pay.paid_date, today)} by ${method}`;
-    case "scheduled":
-      if (!pay) return "Payment scheduled";
-      if (pay.status === "held") return "Payment on hold";
-      if (pay.status === "prepared") return "Waiting for a finance manager to release it";
-      if (pay.status === "released" && pay.method === "CARD") return `Card sent to ${inv.vendor_name}, waiting for their charge`;
-      if (pay.status === "released") return `Sent by ${method}, waiting for the bank`;
-      return `Scheduled for ${shortDate(pay.scheduled_date, today)}`;
-    case "rejected": {
-      const r = d.approvals.find((a) => a.action === "rejected");
-      return r ? `Declined by ${r.approver_name}` : "Rejected";
-    }
-    case "pending_approval": {
-      const p = d.approvals.find((a) => a.action === "pending");
-      return p ? (p.approver_user_id === me ? "Waiting for you" : `Waiting for ${p.approver_name}`) : "Waiting for approval";
-    }
-    case "approved": return inv.is_credit_note ? "Will be deducted from the next payment" : "Approved, ready to pay";
-    case "on_hold": return "Blocked until the problems below are fixed";
-    case "needs_review": return "Needs a person before it goes for approval";
-    default: return statusOf(INVOICE_STATUS, inv.status).label;
-  }
-}
-
-type Step = { key: string; title: string; sub: string; dot: "" | "pending" | "positive" | "negative"; note?: string };
-
-const EVENT_WORDS: Record<string, string> = {
-  "invoice.create": "Read from the document", "invoice.submit": "Sent for approval", "invoice.edit": "Corrected",
-  "invoice.recode": "Ledger account changed", "invoice.acknowledge_warning": "Warning acknowledged",
-  "invoice.on_hold": "Put on hold", "invoice.needs_review": "Sent to review", "invoice.reject": "Rejected",
-  "invoice.withdraw_from_approval": "Taken back from approval", "payment.prepare": "Payment prepared",
-  "payment.hold": "Payment held", "payment.unhold": "Hold lifted", "payment.release": "Payment released",
-  "payment.settle": "Payment confirmed", "payment.cancel": "Payment stopped",
-  "card.issued": "Single-use card sent", "card.charge_approved": "Card charge approved",
-  "card.charge_declined": "Card charge declined",
+const FIELD_LABELS: Record<string, string> = {
+  vendor_name: "Vendor", invoice_number: "Invoice number", invoice_date: "Invoice date", due_date: "Due date",
+  vendor_gst: "GST/HST number", vendor_qst: "QST number", bank_institution: "Institution", bank_transit: "Transit",
+  bank_account: "Account", subtotal_cents: "Subtotal", total_cents: "Total",
 };
-
-// Audit events as timeline steps (approvals get their role and delegation spelled out).
-function eventSteps(d: Data): Step[] {
-  const steps: Step[] = [];
-  const stepByNo = new Map(d.approvals.map((a) => [a.step_no, a]));
-  for (const e of d.history) {
-    if (e.action === "invoice.approve" || e.action === "invoice.decline") {
-      const a = stepByNo.get(Number((e.after as { step?: number } | null)?.step));
-      steps.push({
-        key: `e${e.event_id}`, title: `${e.action === "invoice.approve" ? "Approved" : "Declined"} by ${e.actor_name}`,
-        sub: [a && (APPROVER_ROLE[a.approver_role] ?? a.approver_role), e.on_behalf_of_name && `for ${e.on_behalf_of_name}`,
-          instant(e.created_at)].filter(Boolean).join(" · "),
-        dot: e.action === "invoice.approve" ? "" : "negative", note: e.reason ?? undefined,
-      });
-      continue;
-    }
-    if (e.action === "invoice.fully_approved" || e.action === "invoice.rejected") continue;
-    steps.push({
-      key: `e${e.event_id}`, title: `${EVENT_WORDS[e.action] ?? e.action.replace(/[._]/g, " ")}${e.actor_name ? ` · ${e.actor_name}` : ""}`,
-      sub: instant(e.created_at),
-      dot: e.action.includes("hold") || e.action === "card.charge_declined" ? "negative" : e.action === "payment.settle" ? "positive" : "",
-      note: e.reason ?? undefined,
-    });
-  }
-  return steps;
-}
-
-function historySteps(d: Data, today: string): Step[] {
-  const inv = d.invoice;
-  // The audit log IS the history, in the order things happened.
-  if (inv.source !== "history") return eventSteps(d);
-  const steps: Step[] = [];
-  // History invoices (from the dataset) have no audit events: rebuild the story from approvals and payments.
-  if (inv.received_date) steps.push({ key: "received", title: "Received", sub: longDate(inv.received_date), dot: "" });
-  for (const a of d.approvals) {
-    steps.push({ key: a.approval_id, title: `${a.action === "approved" ? "Approved" : "Declined"} by ${a.approver_name}`,
-      sub: `${APPROVER_ROLE[a.approver_role] ?? a.approver_role} · ${dateTime(a.acted_at, today)}`,
-      dot: a.action === "approved" ? "" : "negative", note: a.comment ?? undefined });
-  }
-  // Payments made in the app today are told by their audit events below, not rebuilt here.
-  const appPayments = new Set(d.history.flatMap((e) => [e.entity_type === "payment" ? e.entity_id : null,
-    (e.after as { payment_id?: string } | null)?.payment_id ?? null]));
-  for (const p of d.payments.filter((p) => !appPayments.has(p.payment_id))) {
-    const method = (METHOD[p.method] ?? p.method).toLowerCase();
-    steps.push({ key: p.payment_id,
-      title: p.status === "settled" ? `Paid by ${method}` : p.status === "outstanding" ? "Cheque sent, not cashed yet" : `Payment ${p.status}`,
-      sub: `${p.paid_date ? shortDate(p.paid_date, today) : `for ${shortDate(p.scheduled_date, today)}`} · ${p.payment_id}`,
-      dot: p.status === "settled" ? "positive" : "" });
-  }
-  return [...steps, ...eventSteps(d)];
-}
-
-// What was printed on the document (identity + where to pay). Business details live in "Details" below.
-const READ_FIELDS: [string, string][] = [
-  ["invoice_number", "Invoice number"], ["invoice_date", "Invoice date"], ["vendor_gst", "GST/HST number"],
-  ["bank_institution", "Institution"], ["bank_transit", "Transit"], ["bank_account", "Account"],
-];
+const TAX_LABELS: Record<string, string> = { HST13: "HST 13%", GST5: "GST 5%", QST9975: "QST 9.975%", PST7_BC: "PST 7% (BC)" };
+const labelOf = (field: string) => FIELD_LABELS[field] ?? (field.startsWith("line:") ? `Line ${field.slice(5)}`
+  : field.startsWith("tax:") ? TAX_LABELS[field.slice(4)] ?? field.slice(4) : field);
+// Which PATCH key corrects each field (the API's edit endpoint). Fields not listed can't be picked from OCR readings.
+const PATCH_KEY: Record<string, string> = {
+  invoice_number: "vendor_invoice_number", invoice_date: "invoice_date", due_date: "due_date", vendor_gst: "vendor_gst",
+  bank_institution: "bank_institution", bank_transit: "bank_transit", bank_account: "bank_account",
+};
 
 export default function InvoiceDetail() {
   const { invoiceId } = useParams();
+  const { data, error, reload } = useApi<Data>(`/invoices/${invoiceId}`);
+  const { data: email } = useApi<Email>(data?.invoice.email_id ? `/emails/${data.invoice.email_id}` : null);
+  if (!data || data.invoice.invoice_id !== invoiceId) return <Loading error={error} />;
+  return <InvoiceView key={invoiceId} data={data} email={email} reload={reload} />;
+}
+
+function InvoiceView({ data, email, reload }: { data: Data; email?: Email; reload: () => void }) {
   const { today, userId } = useSession();
   const navigate = useNavigate();
   const run = useRunner();
-  const { data, error, reload } = useApi<Data>(`/invoices/${invoiceId}`);
-  const { data: email } = useApi<Email>(data?.invoice.email_id ? `/emails/${data.invoice.email_id}` : null);
+  const { message } = App.useApp();
   const [modal, setModal] = useState<null | "decline" | "reject" | "cancel">(null);
   const [editing, setEditing] = useState(false);
   const [onboarding, setOnboarding] = useState(false);
   const [method, setMethod] = useState<string | null>(null);
-  if (!data || data.invoice.invoice_id !== invoiceId) return <Loading error={error} />;
+  const [active, setActive] = useState<string | null>(null);
+  const [help, setHelp] = useState(false);
+  const [storyOpen, setStoryOpen] = useState(false);
 
   const inv = data.invoice;
   const a = data.actions;
-  const status = statusOf(INVOICE_STATUS, inv.status);
   const amount = money(inv.total_cents, inv.currency);
   const pay = data.payments.filter((p) => p.status !== "cancelled").at(-1);
   const x = data.extraction;
   const post = (path: string, body?: unknown) => () => send("POST", path, body ?? {});
   const payBy = method ?? inv.vendor_pay_method ?? "EFT";
+  const sources = new Map((x?.field_sources ?? []).map((s) => [s.field, s]));
 
   // The single next step for this person, in the order the work flows. If it exists but they may not do it,
   // it shows disabled with the server's reason: that's how separation of duties is visible in the demo.
@@ -162,96 +83,92 @@ export default function InvoiceDetail() {
     { perm: a.recheck, label: "Run the checks again", act: post(`/invoices/${inv.invoice_id}/recheck`), done: "Checks re-run" },
   ];
   const primary = candidates.filter((c) => c.perm).find((c) => c.perm!.allowed) ?? candidates.find((c) => c.perm);
-  const problems = data.checks.filter((c) => c.severity !== "info");
+  const blocks = data.checks.filter((c) => c.severity === "block");
+  const warns = data.checks.filter((c) => c.severity === "warn");
   const passed = data.checks.filter((c) => c.severity === "info");
   const firstPending = data.approvals.find((s) => s.action === "pending")?.step_no;
 
-  const rail = (
-    <>
-      <Panel>
-        <Pill tone={status.tone}>{status.label}</Pill>
-        <div className="status-sentence">{statusSentence(data, today, userId)}</div>
-        {data.review_reasons.length > 0 && (
-          <div className="checks mt-2">
-            {data.review_reasons.map((r) => <Check key={r} tone="warning">{r}</Check>)}
-          </div>
-        )}
-        {a.prepare_payment?.allowed && (
-          <div className="mt-4">
-            <div className="small muted mb-2">Pay by</div>
-            <Chips label="Pay by" value={payBy} onChange={setMethod} options={[
-              { value: "EFT", label: "Bank transfer" }, { value: "CARD", label: "Virtual card" }, { value: "CHEQUE", label: "Cheque" },
-            ]} />
-          </div>
-        )}
-        <div className="panel-actions">
-          {primary && (
-            <ActionButton perm={primary.perm} onRun={() => run(primary.act, primary.done, reload, primary.link)}>{primary.label}</ActionButton>
-          )}
-          {a.decline?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setModal("decline")}>Decline</Button>}
-          {a.edit?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setEditing(true)}>Correct fields</Button>}
-          {a.reject?.allowed && !a.decline && <Button className="danger-soft" size="large" shape="round" onClick={() => setModal("reject")}>Reject invoice</Button>}
-          {a.cancel_payment?.allowed && <Button className="danger-soft" size="large" shape="round" onClick={() => setModal("cancel")}>Stop payment</Button>}
+  // [ and ]: step through the list this invoice was opened from.
+  const queue = readQueue();
+  const here = queue?.paths.indexOf(`/invoices/${inv.invoice_id}`) ?? -1;
+  const prev = here > 0 ? queue!.paths[here - 1] : null;
+  const next = here >= 0 && here < (queue?.paths.length ?? 0) - 1 ? queue!.paths[here + 1] : null;
+
+  // A refused shortcut says why (the server's reason), the same sentence the disabled button shows.
+  const tryAction = (perm: Permission | undefined, what: string, act: () => void) => {
+    if (!perm) message.info(`Nothing to ${what} on this invoice right now.`);
+    else if (perm.allowed) act();
+    else message.warning(perm.reason);
+  };
+  useShortcuts({
+    a: () => tryAction(a.approve, "approve", () => run(candidates[0].act, "Approved", reload, candidates[0].link)),
+    d: () => tryAction(a.decline, "decline", () => setModal("decline")),
+    p: () => (a.release && !a.prepare_payment ? tryAction(a.release, "pay", () => run(candidates[3].act, "Payment released", reload))
+      : tryAction(a.prepare_payment, "pay", () => run(candidates[2].act, "Payment prepared", reload, candidates[2].link))),
+    e: () => tryAction(a.edit, "correct", () => setEditing(true)),
+    "[": () => prev && navigate(prev),
+    "]": () => next && navigate(next),
+    "?": () => setHelp(true),
+  });
+
+  const fieldRows = buildFieldRows(data, sources);
+  const steps = pipelineSteps(data, email, today);
+  const story = lifeEvents(data, email, today);
+
+  const nextPanel = (
+    <Panel>
+      <StatusPill kind="invoice" status={inv.status} />
+      <div className="status-sentence">{statusSentence(data, today, userId)}</div>
+      {data.review_reasons.length > 0 && (
+        <div className="checks mt-2">{data.review_reasons.map((r) => <Check key={r} tone="warning">{r}</Check>)}</div>
+      )}
+      {a.prepare_payment?.allowed && (
+        <div className="mt-4">
+          <div className="small muted mb-2">Pay by</div>
+          <Chips label="Pay by" value={payBy} onChange={setMethod} options={[
+            { value: "EFT", label: "Bank transfer" }, { value: "CARD", label: "Virtual card" }, { value: "CHEQUE", label: "Cheque" },
+          ]} />
         </div>
-        {!primary && !a.edit?.allowed && !a.cancel_payment?.allowed && <div className="reason">Nothing for you to do here.</div>}
-      </Panel>
-
-      {data.approvals.length > 0 && (
-        <Panel title="Approvals">
-          <div className="steps">
-            {data.approvals.map((s) => (
-              <div className="step" key={s.approval_id}>
-                <div className={`step-mark ${s.action === "approved" ? "done" : s.action === "rejected" ? "declined" : s.step_no === firstPending ? "now" : ""}`}>
-                  {s.action === "approved" ? <CheckOutlined /> : s.action === "rejected" ? <CloseOutlined /> : s.step_no}
-                </div>
-                <div className="min-0">
-                  <div className="step-name">{s.approver_name}</div>
-                  <div className="step-sub">
-                    {APPROVER_ROLE[s.approver_role] ?? s.approver_role}{s.rule_ids ? ` · ${s.rule_ids}` : ""}
-                    {s.on_behalf_of_name ? ` · for ${s.on_behalf_of_name}` : ""}
-                  </div>
-                  {s.routing_note && <div className="step-sub mt-1">{s.routing_note}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
       )}
-
-      {pay && (
-        <Panel title="Payment">
-          <Stat label="Status" value={<StatusPill kind="payment" status={pay.status} />} />
-          <Stat label="Amount" value={<Money cents={pay.amount_cents} currency={pay.currency} />} />
-          {!!pay.credit_applied_cents && <Stat label="Credit deducted" value={<Money cents={pay.credit_applied_cents} />} />}
-          <div className="panel-stat"><span>Method</span><span>{METHOD[pay.method] ?? pay.method}</span></div>
-          <div className="panel-stat"><span>{pay.paid_date ? "Paid" : "Date"}</span><span>{shortDate(pay.paid_date ?? pay.scheduled_date, today)}</span></div>
-          {pay.reference && <div className="panel-stat"><span>Reference</span><span>{pay.reference}</span></div>}
-          {pay.prepared_by_name && <div className="panel-stat"><span>Prepared by</span><span>{pay.prepared_by_name}</span></div>}
-          {pay.released_by_name && <div className="panel-stat"><span>Released by</span><span>{pay.released_by_name}</span></div>}
-        </Panel>
-      )}
-
-      {data.card && <CardPanel key={data.card.card_id} card={data.card} attempts={data.card_attempts}
-        permission={a.charge_card} onChanged={reload} />}
-    </>
-  );
-
-  const head = (
-    <>
-      <button className="link-button mb-5" onClick={() => navigate(-1)}><ArrowLeftOutlined aria-hidden /> Back</button>
-      <EntityHead avatar={<Avatar name={inv.vendor_name ?? x?.fields.vendor_name ?? "?"} size="lg" />}
-        title={inv.vendor_id ? <Link to={`/vendors/${inv.vendor_id}`}>{inv.vendor_name}</Link> : x?.fields.vendor_name ?? "Unknown vendor"}
-        sub={`${inv.is_credit_note ? "Credit note" : "Invoice"} ${inv.vendor_invoice_number ?? "—"} · ${inv.invoice_id}`} />
-
-      <Hero label={inv.is_credit_note ? "Credit" : "Amount"} cents={inv.total_cents ?? undefined} currency={inv.currency}
-        meta={inv.currency !== "CAD" && inv.total_cad_cents !== null
-          ? <span>≈ <Money cents={inv.total_cad_cents} /> at {inv.fx_rate_to_cad} on {shortDate(inv.invoice_date, today)}</span>
-          : <span>Due {longDate(inv.due_date)}</span>} />
-    </>
+      <div className="panel-actions">
+        {primary && <ActionButton perm={primary.perm} onRun={() => run(primary.act, primary.done, reload, primary.link)}>{primary.label}</ActionButton>}
+        {a.decline?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setModal("decline")}>Decline</Button>}
+        {a.edit?.allowed && <Button className="soft" size="large" shape="round" onClick={() => setEditing(true)}>Correct fields</Button>}
+        {a.reject?.allowed && !a.decline && <Button className="danger-soft" size="large" shape="round" onClick={() => setModal("reject")}>Reject invoice</Button>}
+        {a.cancel_payment?.allowed && <Button className="danger-soft" size="large" shape="round" onClick={() => setModal("cancel")}>Stop payment</Button>}
+      </div>
+      {!primary && !a.edit?.allowed && !a.cancel_payment?.allowed && <div className="reason">Nothing for you to do here.</div>}
+      <button className="link-button mt-3 hide-touch" onClick={() => setHelp(true)}>Keyboard shortcuts <Kbd>?</Kbd></button>
+    </Panel>
   );
 
   return (
-    <Page rail={rail} railFirst head={head}>
+    <div className="invoice-page">
+      <div className="spread">
+        <button className="link-button" onClick={() => navigate(-1)}><ArrowLeftOutlined aria-hidden /> Back</button>
+        {queue && here >= 0 && (
+          <div className="queue-nav" aria-label="Step through the list">
+            <span className="small muted">{here + 1} of {queue.paths.length} · {queue.label}</span>
+            <Tooltip title={<span>Previous <Kbd>[</Kbd></span>}>
+              <button className="icon-button" aria-label="Previous invoice" disabled={!prev} onClick={() => prev && navigate(prev)}><LeftOutlined /></button>
+            </Tooltip>
+            <Tooltip title={<span>Next <Kbd>]</Kbd></span>}>
+              <button className="icon-button" aria-label="Next invoice" disabled={!next} onClick={() => next && navigate(next)}><RightOutlined /></button>
+            </Tooltip>
+          </div>
+        )}
+      </div>
+
+      <div className="invoice-head">
+        <EntityHead avatar={<Avatar name={inv.vendor_name ?? x?.fields.vendor_name ?? "?"} size="lg" />}
+          title={inv.vendor_id ? <Link to={`/vendors/${inv.vendor_id}`}>{inv.vendor_name}</Link> : x?.fields.vendor_name ?? "Unknown vendor"}
+          sub={`${inv.is_credit_note ? "Credit note" : "Invoice"} ${inv.vendor_invoice_number ?? "—"} · ${inv.invoice_id}`} />
+        <Hero label={inv.is_credit_note ? "Credit" : "Amount"} cents={inv.total_cents ?? undefined} currency={inv.currency}
+          meta={inv.currency !== "CAD" && inv.total_cad_cents !== null
+            ? <span>≈ <Money cents={inv.total_cad_cents} /> at {inv.fx_rate_to_cad} on {shortDate(inv.invoice_date, today)}</span>
+            : <span>Due {shortDate(inv.due_date, today)}</span>} />
+      </div>
+      <PipelineStrip steps={steps} />
 
       {pay?.status === "held" && <Notice tone="negative" title="Payment on hold">{pay.hold_reason}</Notice>}
       {!inv.vendor_id && a.edit?.allowed && (
@@ -261,86 +178,167 @@ export default function InvoiceDetail() {
       )}
       {data.audit_notes.map((n) => <Notice key={n} tone="negative" title="Audit finding">{n}</Notice>)}
 
-      {data.checks.length > 0 && (
-        <Section title="Checks" extra={passed.length ? <span>{passed.length} passed</span> : undefined}>
-          <div className="checks">
-            {[...problems, ...passed].map((c) => (
-              <Check key={c.check_id} tone={checkTone(c)} meta={c.severity === "warn" && (c.acknowledged_by
-                ? `Checked by ${c.acknowledged_by_name}`
-                : a.edit?.allowed && (
-                  <Button className="soft mt-1" size="small" shape="round" onClick={() => run(
-                    () => send("POST", `/invoices/${inv.invoice_id}/checks/${c.check_id}/acknowledge`), "Marked as checked", reload)}>
-                    Mark as checked</Button>))}>
-                {c.message}
-              </Check>
-            ))}
+      <div className={`invoice-split ${x ? "" : "no-doc"}`}>
+        {x && (
+          <div className="doc-col">
+            <DocumentViewer documentId={x.document_id} filename={x.filename} sources={x.field_sources}
+              active={active} onActive={setActive} labelOf={labelOf} />
           </div>
-        </Section>
-      )}
+        )}
 
-      {x && (
-        <Section title="What we read" extra={
-          <a href={`/api/documents/${x.document_id}/file`} target="_blank" rel="noreferrer"><FileSearchOutlined /> Original</a>}>
-          <p className="muted small m-0 mb-3">
-            {x.engine === "text_layer" ? "From the PDF's text" : "Scanned image, 3 OCR passes compared"}
-            {x.fields.language === "fr" ? " · French" : ""}
-            {x.doubtful.length ? ` · ${x.doubtful.length} to confirm` : " · high confidence"}
-            {inv.reviewed_by_name ? ` · confirmed by ${inv.reviewed_by_name}` : ""}
-          </p>
-          <Tiles items={READ_FIELDS.map(([key, label]) => {
-            const conf = x.field_confidence[key];
-            const raw = x.fields[key];
-            const doubtful = conf && conf.score !== null && conf.score < 0.8;
-            return { label, value: key === "total_cents" ? money(raw as number, inv.currency) : (raw as string | null) ?? "—",
-              note: doubtful ? conf.note : undefined };
-          })} />
-        </Section>
-      )}
-
-      <Section title="Details">
-        <Tiles items={[
-          { label: "Department", value: inv.department_name ?? "Not set" },
-          { label: "Requested by", value: inv.requester_name ?? "Not set" },
-          { label: "Delivered to", value: inv.ship_to_province ? PROVINCE[inv.ship_to_province] ?? inv.ship_to_province : "—" },
-          { label: "Purchase order", value: data.po ? data.po.po_id : "None" },
-          { label: "Contract", value: data.contract ? `${data.contract.contract_id} · ${data.contract.description}` : "None" },
-          { label: "Came in", value: email ? `Email · ${email.from_address}` : inv.source === "upload" ? "Upload" : inv.source === "history" ? "History" : "—" },
-        ]} />
-      </Section>
-
-      <Section title="Lines">
-        <DataTable label="Invoice lines" rows={data.lines} rowKey={(l) => String(l.line_no)} columns={[
-          { key: "desc", title: "Description", render: (l) => (
-            <div className="min-0">
-              <div className="cell-main">{l.description}</div>
-              <div className="cell-sub">{l.gl_account ? `${l.gl_account} ${l.gl_name ?? ""}` : "No ledger account yet"}</div>
-              {l.coding_reason && <div className="cell-sub wrap">{l.coding_reason}</div>}
-            </div>) },
-          { key: "qty", title: "Qty", align: "right", optional: true, width: "num", render: (l) => Number(l.quantity) },
-          { key: "unit", title: "Unit price", align: "right", optional: "wide", width: "amount", render: (l) => <Money cents={l.unit_price_cents} currency={inv.currency} /> },
-          { key: "amount", title: "Amount", align: "right", width: "amount", render: (l) => <Money cents={l.amount_cents} currency={inv.currency} /> },
-        ]} />
-        <div className="totals">
-          <div><span>Subtotal</span><Money cents={inv.subtotal_cents} currency={inv.currency} /></div>
-          {!!inv.gst_hst_cents && <div><span>{inv.ship_to_province === "ON" ? "HST" : "GST"}</span><Money cents={inv.gst_hst_cents} currency={inv.currency} /></div>}
-          {!!inv.pst_qst_cents && <div><span>{inv.ship_to_province === "QC" ? "QST" : "PST"}</span><Money cents={inv.pst_qst_cents} currency={inv.currency} /></div>}
-          <div className="grand"><span>Total</span><Money cents={inv.total_cents} currency={inv.currency} /></div>
+        <div className="next-col">
+          {nextPanel}
+          {data.card && <CardPanel key={data.card.card_id} card={data.card} attempts={data.card_attempts}
+            permission={a.charge_card} onChanged={reload} />}
+          {data.approvals.length > 0 && (
+            <Panel title="Approvals">
+              <div className="steps">
+                {data.approvals.map((s) => (
+                  <div className="step" key={s.approval_id}>
+                    <div className={`step-mark ${s.action === "approved" ? "done" : s.action === "rejected" ? "declined" : s.step_no === firstPending ? "now" : ""}`} aria-hidden>
+                      {s.action === "approved" ? <CheckOutlined /> : s.action === "rejected" ? <CloseOutlined /> : s.step_no}
+                    </div>
+                    <div className="min-0">
+                      <div className="step-name">{s.approver_name}</div>
+                      <div className="step-sub">
+                        {APPROVER_ROLE[s.approver_role] ?? s.approver_role}{s.rule_ids ? ` · ${s.rule_ids}` : ""}
+                        {s.on_behalf_of_name ? ` · for ${s.on_behalf_of_name}` : ""}
+                      </div>
+                      {s.routing_note && <div className="step-sub mt-1">{s.routing_note}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )}
+          {pay && (
+            <Panel title="Payment">
+              <Stat label="Status" value={<StatusPill kind="payment" status={pay.status} />} />
+              <Stat label="Amount" value={<Money cents={pay.amount_cents} currency={pay.currency} />} />
+              {!!pay.credit_applied_cents && <Stat label="Credit deducted" value={<Money cents={pay.credit_applied_cents} />} />}
+              <Stat label="Method" value={METHOD[pay.method] ?? pay.method} />
+              <Stat label={pay.paid_date ? "Paid" : "Date"} value={shortDate(pay.paid_date ?? pay.scheduled_date, today)} />
+              {pay.reference && <Stat label="Reference" value={pay.reference} />}
+              {pay.prepared_by_name && <Stat label="Prepared by" value={pay.prepared_by_name} />}
+              {pay.released_by_name && <Stat label="Released by" value={pay.released_by_name} />}
+            </Panel>
+          )}
         </div>
-      </Section>
 
-      <Section title="Activity">
-        <ol className="timeline">
-          {historySteps(data, today).map((s) => (
-            <li key={s.key}>
-              <span className={`tl-dot ${s.dot}`} />
-              <div className="tl-title">{s.title}</div>
-              <div className="tl-sub">{s.sub}</div>
-              {s.note && <div className="tl-note">{s.note}</div>}
-            </li>
-          ))}
-        </ol>
-      </Section>
+        <div className="rest-col">
+          {data.checks.length > 0 && (
+            <section className="verdict" aria-label="Checks">
+              <div className="spread">
+                <h2 className="section-title">Checks</h2>
+                <div className="cluster">
+                  {blocks.length > 0 && <Pill tone="negative">{blocks.length} {plural(blocks.length, "blocks it", "block it")}</Pill>}
+                  {warns.length > 0 && <Pill tone="warning">{warns.length} to look at</Pill>}
+                  <Pill tone="positive">{passed.length} passed</Pill>
+                </div>
+              </div>
+              <div className="checks mt-2">
+                {[...blocks, ...warns, ...passed].map((c) => (
+                  <Check key={c.check_id} tone={checkTone(c)} meta={c.severity === "warn" && (c.acknowledged_by
+                    ? `Checked by ${c.acknowledged_by_name}`
+                    : a.edit?.allowed && (
+                      <Button className="soft mt-1" size="small" shape="round" onClick={() => run(
+                        () => send("POST", `/invoices/${inv.invoice_id}/checks/${c.check_id}/acknowledge`), "Marked as checked", reload)}>
+                        Mark as checked</Button>))}>
+                    {c.message}
+                  </Check>
+                ))}
+              </div>
+            </section>
+          )}
 
+          {x && (
+            <Section title="What we read" extra={<span>{x.engine === "text_layer" ? "From the PDF's text" : "Scan · 3 OCR passes"}</span>}>
+              <div className="fields" onMouseLeave={() => setActive(null)}>
+                {fieldRows.map((f) => (
+                  <div key={f.field} id={`field-${f.field}`} tabIndex={f.source ? 0 : -1}
+                    className={`field-row ${active === f.field ? "active" : ""} ${f.source ? "located" : ""}`}
+                    onMouseEnter={() => f.source && setActive(f.field)} onFocus={() => f.source && setActive(f.field)}>
+                    <div className="field-label">{labelOf(f.field)}</div>
+                    <div className="field-value">
+                      {f.value}
+                      {f.source?.source === "ocr" && <span className="tag" title="Read by OCR from a scan">OCR</span>}
+                    </div>
+                    {f.note && <div className={`field-note ${f.settled ? "settled" : ""}`}>{f.note}</div>}
+                    {f.readings && (
+                      <div className="field-readings">
+                        <span className="small muted">The OCR passes read:</span>
+                        {f.readings.map((r) => (
+                          PATCH_KEY[f.field] && a.edit?.allowed && r !== f.raw
+                            ? <button key={r} className="chip" onClick={() => run(() => send("PATCH", `/invoices/${inv.invoice_id}`,
+                                { [PATCH_KEY[f.field]]: r, reason: `Picked the OCR reading “${r}” for ${labelOf(f.field).toLowerCase()}` }),
+                                `Using “${r}”. Checks re-run.`, reload)}>Use “{r}”</button>
+                            : <span key={r} className={`chip ${r === f.raw ? "on" : ""}`}>“{r}”{r === f.raw ? " · used" : ""}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          <Section title="Details">
+            <Tiles items={[
+              { label: "Department", value: inv.department_name ?? "Not set" },
+              { label: "Requested by", value: inv.requester_name ?? "Not set" },
+              { label: "Delivered to", value: inv.ship_to_province ? PROVINCE[inv.ship_to_province] ?? inv.ship_to_province : "—" },
+              { label: "Purchase order", value: data.po ? data.po.po_id : "None" },
+              { label: "Contract", value: data.contract ? `${data.contract.contract_id} · ${data.contract.description}` : "None" },
+              { label: "Came in", value: email ? `Email · ${email.from_address}` : inv.source === "upload" ? "Upload" : inv.source === "history" ? "History" : "—" },
+            ]} />
+          </Section>
+
+          <Section title="Lines">
+            <DataTable label="Invoice lines" rows={data.lines} rowKey={(l) => String(l.line_no)}
+              onRowHover={(l) => setActive(l ? `line:${l.line_no}` : null)} columns={[
+                { key: "desc", title: "Description", render: (l) => (
+                  <div className={`min-0 ${active === `line:${l.line_no}` ? "line-active" : ""}`}>
+                    <div className="cell-main">{l.description}</div>
+                    <div className="cell-sub">{l.gl_account ? `${l.gl_account} ${l.gl_name ?? ""}` : "No ledger account yet"}</div>
+                    {l.coding_reason && <div className="cell-sub wrap">{l.coding_reason}</div>}
+                  </div>) },
+                { key: "qty", title: "Qty", align: "right", optional: true, width: "num", render: (l) => Number(l.quantity) },
+                { key: "unit", title: "Unit price", align: "right", optional: "wide", width: "amount", render: (l) => <Money cents={l.unit_price_cents} currency={inv.currency} /> },
+                { key: "amount", title: "Amount", align: "right", width: "amount", render: (l) => <Money cents={l.amount_cents} currency={inv.currency} /> },
+              ]} />
+            <div className="totals">
+              <div><span>Subtotal</span><Money cents={inv.subtotal_cents} currency={inv.currency} /></div>
+              {!!inv.gst_hst_cents && <div><span>{inv.ship_to_province === "ON" ? "HST" : "GST"}</span><Money cents={inv.gst_hst_cents} currency={inv.currency} /></div>}
+              {!!inv.pst_qst_cents && <div><span>{inv.ship_to_province === "QC" ? "QST" : "PST"}</span><Money cents={inv.pst_qst_cents} currency={inv.currency} /></div>}
+              <div className="grand"><span>Total</span><Money cents={inv.total_cents} currency={inv.currency} /></div>
+            </div>
+          </Section>
+
+          <section className="section">
+            <div className="section-head">
+              <h2 className="section-title">Life of this invoice</h2>
+              <button className="link-button" aria-expanded={storyOpen} aria-controls="life-of-invoice" onClick={() => setStoryOpen((o) => !o)}>
+                {storyOpen ? "Show less" : `Show all ${story.length} steps`}
+              </button>
+            </div>
+            <ol className="timeline" id="life-of-invoice">
+              {(storyOpen ? story : [story[0], ...story.slice(-2)].filter((s, i, all) => s && all.indexOf(s) === i)).map((s) => (
+                <li key={s.key}>
+                  <span className={`tl-dot ${s.tone ?? ""}`} aria-hidden />
+                  <div className="tl-title">{s.title}</div>
+                  <div className="tl-sub">{s.sub}</div>
+                  {s.note && <div className="tl-note">{s.note}</div>}
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
+      </div>
+
+      <ShortcutsHelp open={help} onClose={() => setHelp(false)} items={[
+        ["A", "Approve"], ["D", "Decline"], ["P", "Pay (or release)"], ["E", "Correct fields"],
+        ["[", "Previous invoice in the list"], ["]", "Next invoice in the list"], ["?", "This list"],
+      ]} />
       <ReasonModal open={modal !== null}
         title={modal === "decline" ? "Decline this invoice?" : modal === "reject" ? "Reject this invoice?" : "Stop this payment?"}
         okText={modal === "decline" ? "Decline" : modal === "reject" ? "Reject" : "Stop payment"}
@@ -356,6 +354,47 @@ export default function InvoiceDetail() {
         onCreated={() => { setOnboarding(false); reload(); }}
         initial={{ legal_name: x?.fields.vendor_name, gst_hst_number: x?.fields.vendor_gst, bank_institution: x?.fields.bank_institution,
           bank_transit: x?.fields.bank_transit, bank_account: x?.fields.bank_account, ap_contact_email: email?.from_address }} />
-    </Page>
+    </div>
   );
+}
+
+type FieldRow = { field: string; value: ReactNode; raw?: string; source?: FieldSource; note?: string; settled?: boolean; readings?: string[] };
+
+/** "What we read": every field printed on the document, its current value, where it was found, and doubts. */
+function buildFieldRows(d: Data, sources: Map<string, FieldSource>): FieldRow[] {
+  const x = d.extraction!;
+  if (!x) return [];
+  const inv = d.invoice;
+  const f = x.fields as Record<string, unknown>;
+  // Fields the invoice record owns show their current value (a person may have corrected them since).
+  const current: Record<string, unknown> = {
+    invoice_number: inv.vendor_invoice_number, invoice_date: inv.invoice_date, due_date: inv.due_date,
+  };
+  // Once a person has set a field, the machine's "please confirm" is answered: say who set it instead.
+  const correctedBy = new Map<string, string>();
+  for (const e of d.history) {
+    if (e.action !== "invoice.edit") continue;
+    for (const key of Object.keys(e.after ?? {})) correctedBy.set(key, e.actor_name ?? "a person");
+  }
+  const rows: FieldRow[] = [];
+  const scalar = (field: string) => {
+    const raw = (field in current ? current[field] : f[field]) as string | null | undefined;
+    if (!raw && !sources.has(field)) return;
+    const conf = x.field_confidence[field];
+    const src = sources.get(field);
+    const readings = src?.ocr_readings ? [...new Set(src.ocr_readings.filter((r): r is string => !!r))] : [];
+    const by = correctedBy.get(PATCH_KEY[field] ?? field);
+    rows.push({ field, value: raw ?? "—", raw: raw ?? undefined, source: src,
+      settled: !!by, note: by ? `Set by ${by}` : conf && conf.score !== null && conf.score < 0.8 ? conf.note : undefined,
+      readings: readings.length > 1 ? readings : undefined });
+  };
+  ["vendor_name", "invoice_number", "invoice_date", "due_date", "vendor_gst", "vendor_qst",
+    "bank_institution", "bank_transit", "bank_account"].forEach(scalar);
+  if (inv.subtotal_cents !== null) rows.push({ field: "subtotal_cents", value: <Money cents={inv.subtotal_cents} currency={inv.currency} />, source: sources.get("subtotal_cents") });
+  for (const t of (f.taxes as { label: string; rate_pct: string; amount_cents: number; code: string | null }[] | undefined) ?? []) {
+    const key = `tax:${t.code ?? t.label}`;
+    rows.push({ field: key, value: <Money cents={t.amount_cents} currency={inv.currency} />, source: sources.get(key) });
+  }
+  if (inv.total_cents !== null) rows.push({ field: "total_cents", value: <Money cents={inv.total_cents} currency={inv.currency} />, source: sources.get("total_cents") });
+  return rows;
 }

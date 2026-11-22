@@ -200,11 +200,24 @@ export type Extraction = {
   fields: Record<string, unknown> & { vendor_name?: string; vendor_gst?: string; bank_institution?: string;
     bank_transit?: string; bank_account?: string; language?: string; taxes?: { label: string; rate_pct: string }[] };
   field_confidence: FieldConfidence;
+  field_sources: FieldSource[];
   filename: string;
   document_id: number;
+  mime_type: string;
+  received_at: string;
+  read_at: string;
   overall: number;
   doubtful: string[];
 };
+
+/** Where on page 1 a field was read, as fractions of the page (0–1). `ocr_readings` when the OCR passes disagreed. */
+export type FieldSource = {
+  field: string; page: number; x0: number; y0: number; x1: number; y1: number;
+  source: "text_layer" | "ocr"; ocr_readings?: (string | null)[];
+};
+
+export type BankStatementLine = { bank_txn_id: string; posted_date: string; description: string; amount_cents: number;
+  kind: string; title: string; explanation: string };
 
 export type AuditEvent = {
   event_id: number;
@@ -238,6 +251,8 @@ export type InvoiceDetail = {
   contract: { contract_id: string; description: string } | null;
   card: VirtualCard | null;
   card_attempts: CardAttempt[];
+  bank_line: BankStatementLine | null;
+  in_transit: boolean;
 };
 
 export type VirtualCard = {

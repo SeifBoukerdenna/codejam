@@ -56,3 +56,21 @@ def test_page_image_for_a_pdf_and_a_scan(api, pconn):
     scan = api("GET", f"/documents/{scan_id}/page.png", "U004")
     original = pconn.execute("SELECT content FROM documents WHERE document_id = %s", (scan_id,)).fetchone()["content"]
     assert scan.content == bytes(original)       # a scan is shown exactly as received
+
+
+def test_invoice_page_shows_where_the_payment_landed(api, pconn):
+    # A bank transfer from the history, found on the statement by its trace (last 6 digits of the reference).
+    paid = api("GET", "/invoices/AP-00049", "U004").json()
+    assert paid["bank_line"]["description"].endswith("388945")
+    assert paid["in_transit"] is False
+    # A card payment goes through the card account, never the bank statement: neither found nor "in transit".
+    card = api("GET", "/invoices/AP-00001", "U004").json()
+    assert card["payments"][0]["method"] == "CARD"
+    assert card["bank_line"] is None and card["in_transit"] is False
+
+
+def test_the_invoice_page_gets_boxes_and_reading_times(api, pconn):
+    inv = pconn.execute("SELECT invoice_id FROM invoices WHERE vendor_invoice_number = 'HA26-2766'").fetchone()["invoice_id"]
+    x = api("GET", f"/invoices/{inv}", "U004").json()["extraction"]
+    assert {"total_cents", "bank_account", "invoice_number"} <= {s["field"] for s in x["field_sources"]}
+    assert x["mime_type"] == "application/pdf" and x["received_at"] and x["read_at"]

@@ -22,7 +22,13 @@ const colClass = <T,>(c: Column<T>) =>
   [c.align === "right" ? "right" : "", c.width ? `w-${c.width}` : "", c.optional === "wide" ? "opt-wide" : c.optional ? "optional" : ""]
     .filter(Boolean).join(" ");
 
-export function DataTable<T>({ columns, rows, rowKey, to, onOpen, label, empty, loading, linkColumn }: {
+/** The list an invoice was opened from, so [ and ] on the invoice page step through the same list. */
+export const QUEUE_KEY = "harborline:queue";
+export function readQueue(): { label: string; paths: string[] } | null {
+  try { return JSON.parse(sessionStorage.getItem(QUEUE_KEY) ?? "null"); } catch { return null; }
+}
+
+export function DataTable<T>({ columns, rows, rowKey, to, onOpen, label, empty, loading, linkColumn, onRowHover }: {
   columns: Column<T>[];
   rows: T[] | undefined;
   rowKey: (row: T) => string;
@@ -35,6 +41,8 @@ export function DataTable<T>({ columns, rows, rowKey, to, onOpen, label, empty, 
   loading?: boolean;
   /** Which column gets the link (defaults to the first). */
   linkColumn?: string;
+  /** Called with the row under the pointer (or focus), and null when it leaves. */
+  onRowHover?: (row: T | null) => void;
 }) {
   const navigate = useNavigate();
   const [selected, setSelected] = useState(-1);
@@ -42,7 +50,15 @@ export function DataTable<T>({ columns, rows, rowKey, to, onOpen, label, empty, 
   const clickable = !!(to || onOpen);
   const list = rows ?? [];
 
+  // Remember this list when one of its invoices is opened (sessionStorage: this tab only, gone when it closes).
+  const remember = () => {
+    const paths = list.map((r) => to?.(r)).filter((p): p is string => !!p && p.startsWith("/invoices/"));
+    if (paths.length) {
+      try { sessionStorage.setItem(QUEUE_KEY, JSON.stringify({ label, paths })); } catch { /* private mode: no stepping */ }
+    }
+  };
   const open = (row: T) => {
+    remember();
     if (onOpen) onOpen(row);
     else { const target = to?.(row); if (target) navigate(target); }
   };
@@ -83,9 +99,10 @@ export function DataTable<T>({ columns, rows, rowKey, to, onOpen, label, empty, 
             return (
               <tr key={rowKey(row)} className={`${clickable ? "clickable" : ""} ${i === selected ? "selected" : ""}`}
                 aria-selected={i === selected}
+                onMouseEnter={onRowHover && (() => onRowHover(row))} onMouseLeave={onRowHover && (() => onRowHover(null))}
                 onClick={(e) => {
                   setSelected(i);
-                  if ((e.target as HTMLElement).closest("a, button")) return;   // let real links and buttons act
+                  if ((e.target as HTMLElement).closest("a, button")) { remember(); return; }   // real links act themselves
                   if (clickable) open(row);
                 }}>
                 {columns.map((c) => (

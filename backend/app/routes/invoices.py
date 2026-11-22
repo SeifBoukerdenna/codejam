@@ -11,7 +11,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import Response
 from psycopg.types.json import Jsonb
 
-from app import audit, audit_chain, config, findings
+from app import audit, audit_chain, config, findings, reconcile
 from app.auth import can, current_user, require
 from app.db import get_conn
 from app.extraction.extract import LABELS, doubtful_fields, overall
@@ -128,7 +128,8 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
     extraction = None
     if invoice["document_id"]:
         x = conn.execute(
-            """SELECT x.engine, x.fields, x.field_confidence, x.field_sources, d.filename, d.document_id, d.mime_type
+            """SELECT x.engine, x.fields, x.field_confidence, x.field_sources, d.filename, d.document_id, d.mime_type,
+                      d.created_at AS received_at, x.created_at AS read_at
                FROM extractions x JOIN documents d USING (document_id)
                WHERE x.document_id = %s ORDER BY x.extraction_id DESC LIMIT 1""", (invoice["document_id"],)).fetchone()
         if x:
@@ -153,13 +154,24 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
         """SELECT a.*, u.full_name AS recorded_by_name FROM card_authorizations a LEFT JOIN users u ON u.user_id = a.recorded_by
            WHERE a.card_id = %s ORDER BY a.auth_id DESC""", (card["card_id"],)).fetchall() if card else []
 
+    # Where the money shows up on the bank statement (reconcile.py), for the end of "Life of this invoice".
+    # A payment settled in the last few days may not be on the statement yet: that's "in transit", not missing.
+    bank_line, in_transit = None, False
+    # Card payments go through the card account, not the bank statement, so only EFT and cheques are looked for.
+    paid_ids = {p["payment_id"] for p in payment_rows
+                if p["status"] in ("settled", "outstanding") and p["method"] in ("EFT", "CHEQUE")}
+    if paid_ids:
+        statement = reconcile.check_statement(conn)
+        bank_line = next((l for l in statement["lines"] if l["payment_id"] in paid_ids), None)
+        in_transit = bank_line is None and not any(m["payment_id"] in paid_ids for m in statement["missing_from_statement"])
+
     stored_checks = conn.execute("SELECT * FROM check_results WHERE invoice_id = %s", (invoice_id,)).fetchall()
     po = conn.execute("SELECT * FROM purchase_orders WHERE po_id = %s", (invoice["po_id"],)).fetchone() if invoice["po_id"] else None
     contract = (conn.execute("SELECT * FROM contracts WHERE contract_id = %s", (invoice["contract_id"],)).fetchone()
                 if invoice["contract_id"] else None)
     return {
         "invoice": invoice, "lines": lines, "approvals": approval_rows, "payments": payment_rows, "checks": checks,
-        "card": card, "card_attempts": card_attempts,
+        "card": card, "card_attempts": card_attempts, "bank_line": bank_line, "in_transit": in_transit,
         "history": history, "po": po, "contract": contract, "extraction": extraction, "audit_notes": audit_notes,
         "review_reasons": review_reasons(conn, invoice, stored_checks) if invoice["status"] == "needs_review" else [],
         "actions": actions_for(conn, user, invoice),

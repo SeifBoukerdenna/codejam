@@ -144,7 +144,8 @@ export function statusOf(map: Record<string, Status>, key: string): Status {
 /** Audit timestamps are real moments (timestamptz), so unlike invoice dates they ARE converted to the
  *  viewer's local time. "Nov 21, 10:07 a.m." */
 export function instant(iso: string): string {
-  return new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+  // en-US for the "6:30 PM" style, the same as dateTime() above, so one page never mixes "PM" and "p.m.".
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
     .format(new Date(iso));
 }
 

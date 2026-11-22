@@ -108,7 +108,13 @@ export async function launch({ width = 1440, height = 1000, mobile = false } = {
       clip: { x: 0, y: top, width, height: Math.min(h, 6000), scale: 1 } });
     writeFileSync(`${SHOTS}/${name}.png`, Buffer.from(r.data, "base64"));
   };
+  // One key, as a person would press it (keydown carries the character, so e.key matches in the page).
+  const press = async (key) => {
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key, text: key.length === 1 ? key : undefined });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key });
+    await sleep(300);
+  };
   const text = () => evaluate("document.body.innerText");
   const close = () => { ws.close(); chrome.kill(); };
-  return { send, evaluate, waitFor, click, fill, go, shot, text, errors, close, sleep };
+  return { send, evaluate, waitFor, click, fill, go, shot, text, press, errors, close, sleep };
 }
