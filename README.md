@@ -20,27 +20,86 @@ pay**, every step audited. CodeJam 16 · Brim Financial challenge. Payments are 
 
 ## Run it
 
-Needs Docker only.
+Everything runs in Docker: you don't need Python, Node, Postgres or Tesseract on your machine. The dataset is in the
+repository, so a clone is all you need.
+
+### 1. Install the prerequisites
+
+| You need | Why | How to check |
+|---|---|---|
+| **Git** | to clone the repository | `git --version` |
+| **Docker** with Compose v2: [Docker Desktop](https://www.docker.com/products/docker-desktop/) on macOS or Windows, Docker Engine + the Compose plugin on Linux | runs the four services | `docker compose version` |
+| **make** (optional) | shortcuts for the commands below | `make --version`. macOS and Linux have it; on Windows, use the `docker compose` commands shown next to each `make` command |
+
+Give Docker at least **4 GB of memory** (Docker Desktop → Settings → Resources): OCR on the scanned invoices needs it.
+Works on Intel and Apple Silicon Macs, Linux and Windows (WSL 2). Ports **5173**, **8000** and **5432** must be free
+(stop a local Postgres first if you run one).
+
+### 2. Clone and start
 
 ```sh
-make up        # db + api + worker + web; seeds the database on first start
+git clone https://github.com/SeifBoukerdenna/codejam.git
+cd codejam
+make up                       # or: docker compose up --build
 ```
 
-Open **http://localhost:5173/?as=U004** (Jordan, AP clerk). Switch user with **⌘K** (type `as elise`) or the picker at the
-bottom of the sidebar: `?as=U003` Elise (finance manager), `?as=U002` Marcus (controller), `?as=U006` Hannah (auditor).
-API docs: http://localhost:8000/docs. Works with no internet (fonts and every asset are bundled).
+The **first start takes 3–5 minutes** and needs internet: Docker downloads Postgres, Python and Node images, installs
+Tesseract OCR and the Python and npm packages, then seeds the database (3,674 rows). Later starts take seconds and work
+offline. You're ready when the log shows `Seeded 3674 rows into 17 tables.` (first start only), the API's
+`Uvicorn running on http://0.0.0.0:8000` and Vite's `Local: http://localhost:5173/`.
+
+`make up` keeps the logs in your terminal; stop with **Ctrl+C**. To run it in the background instead:
+`docker compose up --build -d`, then `docker compose logs -f` to watch.
+
+### 3. Open the app
+
+- **http://localhost:5173/?as=U004**: Harborline AP as Jordan, the AP clerk.
+- Switch user with **⌘K / Ctrl+K** (type `as elise`), with the picker at the bottom of the sidebar, or with the URL:
+  `?as=U003` Elise (finance manager), `?as=U001` Priya (CFO), `?as=U002` Marcus (controller), `?as=U006` Hannah (auditor).
+- **http://localhost:8000/docs**: the API, interactive (FastAPI's Swagger page).
+
+The app starts with **59 unread emails**. Click **Inbox → Sort 59 new emails** and the worker reads every invoice in
+about 7 seconds. Then follow [Demo in 5 minutes](#demo-in-5-minutes) below.
+
+### 4. Everyday commands
+
+| Command | Without make | What it does |
+|---|---|---|
+| `make up` | `docker compose up --build` | Start everything (seeds the database on the first start only) |
+| `make reseed` | `docker compose run --rm api python -m app.seed` | Back to the start: wipe and reload the dataset, 59 unread emails (~10 s) |
+| `make test` | `docker compose run --rm api pytest` | All 177 backend tests, on separate scratch databases (your data isn't touched) |
+| `make traps` | `docker compose run --rm api pytest tests/test_traps.py -q` | The TRAP_MAP checklist: one line per trap, CAUGHT or MISSED |
+| `make tamper` · `make verify-audit` | `docker compose run --rm api python -m app.demo.tamper` | Edit an audit event with the database's protection off, then watch the signed chain catch it (`make reseed` after) |
+| `make psql` | `docker compose exec db psql -U ap ap` | SQL prompt on the app database |
+| `make down` | `docker compose down` | Stop everything; the data is kept (in the `pgdata` volume) |
+| | `docker compose down -v` | Stop and **delete** the data; the next start seeds from scratch |
+
+### 5. Optional: the browser checks and the demo video
+
+These drive the running app in Chrome from your machine, so they need **Node 22+**, **Google Chrome** and **make**
+installed (the demo scripts reseed with `make reseed`; there's nothing to `npm install`: the driver has no dependencies).
 
 | Command | What it does |
 |---|---|
-| `make up` | Start everything |
-| `make reseed` | Back to the start (wipe and reload the dataset) |
-| `make traps` | The TRAP_MAP checklist: one line per trap, CAUGHT or MISSED |
-| `make test` | All 177 backend tests, on separate scratch databases |
-| `make demo-test` | The demo as a test: reseed, every step clicked in Chrome and checked, reseed again (~45 s) |
-| `make demo-video` | The same demo at human pace, recorded to [docs/demo-run.webm](docs/demo-run.webm) (needs ffmpeg) |
-| `make tamper` · `make verify-audit` | Edit an audit event with the database's protection off, then watch the signed chain catch it |
-| `node e2e/overflow.mjs` · `node e2e/i18n.mjs` | Layout check at 1024×576 and 390px · every French screen translated |
-| `make down` · `make psql` | Stop (data kept) · SQL prompt |
+| `make demo-test` | The demo as a test: reseeds, clicks through all 10 steps in Chrome and checks each one, reseeds again (~45 s) |
+| `make demo-video` | The same demo at human pace, recorded to [docs/demo-run.webm](docs/demo-run.webm). Also needs **ffmpeg** (`brew install ffmpeg`) |
+| `node e2e/overflow.mjs` | Every page at 1024×576 and 390 px: no sideways scrolling, no clipped table |
+| `node e2e/i18n.mjs` | Every French screen, for six roles: nothing untranslated |
+
+Chrome is expected at its macOS location. Elsewhere, point to it:
+`CHROME=/usr/bin/google-chrome node e2e/overflow.mjs` (Linux) or the path to `chrome.exe` (Windows).
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `port is already allocated` (5432, 8000 or 5173) | Something else uses the port. Stop it (often a local Postgres: `brew services stop postgresql`), or change the left-hand port in `docker-compose.yml` |
+| The page says "Couldn't load this page" | The API is still starting or seeding: wait for `Uvicorn running`, then reload |
+| Invoices stay "Reading" after sorting the inbox | Check the worker: `docker compose logs worker`. It restarts by itself if it started before the database was ready |
+| The worker or OCR is very slow, or gets killed | Give Docker more memory (4 GB or more) |
+| Anything looks wrong after experimenting | `make reseed` puts the data back to the start |
+| You want a completely clean start | `docker compose down -v`, then `make up` |
+| Running a second worker | `docker compose up --scale worker=3`: workers share one queue in Postgres and never take the same document |
 
 ## The 9 required features
 
