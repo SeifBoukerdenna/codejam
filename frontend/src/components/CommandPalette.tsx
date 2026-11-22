@@ -33,7 +33,7 @@ export function rememberVisit(item: Recent) {
   } catch { /* no storage: no recent list */ }
 }
 
-const PAGES: { title: string; to: string; words: string }[] = [
+const PAGES: { title: string; to: string; words: string; roles?: string[] }[] = [
   { title: "Home", to: "/", words: "dashboard start" },
   { title: "Inbox: needs review", to: "/inbox?tab=review", words: "invoices check" },
   { title: "Inbox: on hold", to: "/inbox?tab=hold", words: "blocked held" },
@@ -49,6 +49,7 @@ const PAGES: { title: string; to: string; words: string }[] = [
   { title: "Tax credits at risk", to: "/activity?tab=tax", words: "gst hst qst pst" },
   { title: "Audit log", to: "/activity?tab=log", words: "history events signed chain" },
   { title: "Try to fool us", to: "/fool", words: "fake fraud forge demo" },
+  { title: "System health", to: "/health", words: "slo sli worker queue ocr speed status uptime", roles: ["controller_admin", "auditor"] },
 ];
 
 /** Every typed word starts some word of the text ("pay rel" → "Payments: waiting for release"). */
@@ -81,7 +82,7 @@ export default function CommandPalette() {
 }
 
 function Palette({ close }: { close: () => void }) {
-  const { users, userId, setUserId, today } = useSession();
+  const { users, user, userId, setUserId, today } = useSession();
   const navigate = useNavigate();
   const run = useRunner();
   const { message } = App.useApp();
@@ -119,6 +120,7 @@ function Palette({ close }: { close: () => void }) {
   const items = useMemo<Item[]>(() => {
     const recent = readRecent();
     const list: Item[] = [];
+    const pages = PAGES.filter((p) => !p.roles || (user && p.roles.includes(user.role)));
     const person = (u: User): Item => ({
       key: `u-${u.user_id}`, group: "Switch user", icon: <Avatar name={u.full_name} size="sm" round />,
       title: <>{u.full_name}{u.user_id === userId && <span className="muted"> · you</span>}</>,
@@ -132,7 +134,7 @@ function Palette({ close }: { close: () => void }) {
       for (const r of recent) {
         list.push({ key: `r-${r.key}`, group: "Recent", icon: <Avatar name={r.title} size="sm" />, title: r.title, sub: r.sub, run: go(r.to) });
       }
-      for (const p of PAGES) list.push({ key: `p-${p.to}`, group: "Go to", icon: <ArrowRightOutlined />, title: p.title, run: go(p.to) });
+      for (const p of pages) list.push({ key: `p-${p.to}`, group: "Go to", icon: <ArrowRightOutlined />, title: p.title, run: go(p.to) });
     } else {
       // Vendors first: at most 5, and a name like "harlow" should show both look-alike vendors before their invoices.
       for (const v of found?.vendors ?? []) {
@@ -152,7 +154,7 @@ function Palette({ close }: { close: () => void }) {
           right: <Money cents={i.total_cents} currency={i.currency} />, run: go(`/invoices/${i.invoice_id}`) });
       }
       for (const u of users.filter((u) => matches(words, userText(u))).slice(0, 4)) list.push(person(u));
-      for (const p of PAGES.filter((p) => matches(words, `${p.title} ${p.words}`))) {
+      for (const p of pages.filter((p) => matches(words, `${p.title} ${p.words}`))) {
         list.push({ key: `p-${p.to}`, group: "Go to", icon: <ArrowRightOutlined />, title: p.title, run: go(p.to) });
       }
     }

@@ -1,4 +1,4 @@
-import { AuditOutlined, BankOutlined, CheckCircleOutlined, ExperimentOutlined, HomeOutlined, InboxOutlined, SearchOutlined, ShopOutlined, SwapOutlined } from "@ant-design/icons";
+import { AuditOutlined, BankOutlined, CheckCircleOutlined, DashboardOutlined, ExperimentOutlined, HomeOutlined, InboxOutlined, SearchOutlined, ShopOutlined, SwapOutlined } from "@ant-design/icons";
 import { Select } from "antd";
 import { useEffect, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
@@ -36,6 +36,8 @@ export default function AppShell() {
     { to: "/vendors", label: "Vendors", icon: <ShopOutlined /> },
     { to: "/activity", label: "Activity", short: "Audit", icon: <AuditOutlined /> },
     { to: "/fool", label: "Try to fool us", short: "Fool us", icon: <ExperimentOutlined /> },
+    // The machinery's health is for the people who answer for reliability and integrity (auth.py: health.view).
+    ...(user && ["controller_admin", "auditor"].includes(user.role) ? [{ to: "/health", label: "System health", short: "Health", icon: <DashboardOutlined /> }] : []),
   ];
 
   return (

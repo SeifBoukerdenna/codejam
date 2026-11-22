@@ -428,3 +428,15 @@ Inline styles only for values computed at runtime (an avatar's colour, a progres
   gets no tooltip; the rows are its breakdown.
 - **The tax line is labelled with the tax actually charged** (Northbound charges HST on an Alberta delivery: "HST"),
   not the one the province expects. The check says it's wrong; the label says what's printed.
+- **Worker timestamps use `clock_timestamp()`** for `finished_at`. Postgres `now()` is when the transaction *began*, and
+  the worker reads the document inside that transaction, so every read looked instant (0.01 s for an OCR scan). Found
+  while building the health page, which depends on it.
+- **System health** (`app/health.py`, page for controllers and the auditor): three SLOs over a rolling 28 days.
+  (1) 95% of documents read in under 10 s (worker took it → finished). (2) 95% start being read within 60 s of
+  arriving; a document still waiting counts with its wait so far, so a stuck queue breaches at once, not later.
+  (3) The signed audit log verifies: one changed event is a breach, no budget. Read and wait are separate on purpose:
+  a slow worker and too few workers have different fixes. **95%, not 99%:** at ~50 invoices a month, 99% allows half
+  a bad document, a budget of zero. Error budget = bad events the objective allows (95% of 56 = 2.8). Percentiles are
+  nearest-rank, so a p95 is a duration that really happened. Touchless = submitted to approval by the system (actor
+  NULL in the audit log). Rejected: worker heartbeats and a metrics store (Prometheus): the job table already has the
+  timestamps, and one more service is one more thing to run offline.

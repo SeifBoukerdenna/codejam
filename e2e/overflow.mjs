@@ -2,7 +2,8 @@
 // no sideways scrolling, no clipped table, no page errors.
 import { launch } from "./cdp.mjs";
 const PAGES = ["/", "/inbox", "/inbox?tab=hold", "/approvals", "/payments", "/payments?tab=settled", "/bank", "/vendors",
-  "/activity", "/activity?tab=tax", "/activity?tab=log", "/fool", "/invoices/AP-00473", "/vendors/V004"];
+  "/activity", "/activity?tab=tax", "/activity?tab=log", "/fool", "/invoices/AP-00473", "/vendors/V004",
+  "/health?as=U002"];   // last: it switches to the controller, who may see system health
 let problems = 0;
 for (const [name, opts] of [["projector", { width: 1024, height: 576 }], ["phone", { width: 390, height: 844, mobile: true }]]) {
   const b = await launch(opts);

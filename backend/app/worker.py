@@ -49,8 +49,10 @@ def run_job(url: str | None, job: dict) -> None:
     try:
         with db.transaction(url) as conn:   # the whole document -> invoice step commits, or none of it does
             invoice_id = process_document(conn, job["document_id"])
-            conn.execute("UPDATE extraction_jobs SET status = 'done', finished_at = now(), error = NULL WHERE job_id = %s",
-                         (job["job_id"],))
+            # clock_timestamp(), not now(): now() is when this transaction BEGAN, i.e. before the document was read,
+            # which made every read look instant. The health page's read-time SLO (health.py) depends on this.
+            conn.execute("UPDATE extraction_jobs SET status = 'done', finished_at = clock_timestamp(), error = NULL "
+                         "WHERE job_id = %s", (job["job_id"],))
         print(f"job {job['job_id']}: document {job['document_id']} -> {invoice_id}", flush=True)
     except Exception as exc:  # noqa: BLE001 - any failure goes back on the queue, with the reason recorded
         # A file that can't be read fails the same way every time, so it isn't retried. Anything else
@@ -59,7 +61,7 @@ def run_job(url: str | None, job: dict) -> None:
         status = "failed" if unreadable or job["attempts"] >= MAX_ATTEMPTS else "queued"
         error = str(exc) if unreadable else f"{type(exc).__name__}: {str(exc).splitlines()[0]}"
         with db.transaction(url) as conn:
-            conn.execute("UPDATE extraction_jobs SET status = %s, error = %s, finished_at = now() WHERE job_id = %s",
+            conn.execute("UPDATE extraction_jobs SET status = %s, error = %s, finished_at = clock_timestamp() WHERE job_id = %s",
                          (status, error, job["job_id"]))
             audit.log(conn, actor=None, action="document.read_failed", entity_type="document",
                       entity_id=str(job["document_id"]), reason=f"{type(exc).__name__}: {exc} (attempt {job['attempts']})")

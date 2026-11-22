@@ -58,6 +58,12 @@ def can(conn, user: dict | None, action: str, resource: dict | None = None) -> D
         if user["role"] not in ("auditor", "controller_admin"):
             return deny("Only the auditor or a controller can verify the audit log.")
         return allow()
+    if action == "health.view":
+        # System health is about the machinery (queue, worker, audit chain), so it's for the people who answer for
+        # the system's reliability and integrity: controllers, and the auditor (it's read-only).
+        if user["role"] not in ("auditor", "controller_admin"):
+            return deny("System health is for controllers and the auditor.")
+        return allow()
     if user["role"] == "auditor":
         return deny("Auditors have read-only access.")
     role = user["role"]

@@ -5,6 +5,7 @@ import Activity from "./pages/Activity";
 import Approvals from "./pages/Approvals";
 import Bank from "./pages/Bank";
 import Fool from "./pages/Fool";
+import Health from "./pages/Health";
 import Home from "./pages/Home";
 import Inbox from "./pages/Inbox";
 import InvoiceDetail from "./pages/InvoiceDetail";
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="invoices/:invoiceId" element={<InvoiceDetail />} />
             <Route path="activity" element={<Activity />} />
             <Route path="fool" element={<Fool />} />
+            <Route path="health" element={<Health />} />
             <Route path="*" element={<Page><EmptyState title="Page not found">Check the address, or go back home.</EmptyState></Page>} />
           </Route>
         </Routes>

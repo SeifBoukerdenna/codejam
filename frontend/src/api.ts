@@ -552,3 +552,25 @@ export type InvoiceMath = {
   po: Breakdown | null;
   po_id: string | null;
 };
+
+/** GET /health/slis: the system health page (backend/app/health.py). */
+export type Objective = {
+  name: "read" | "wait" | "audit"; sentence: string; objective: number; good: number | null; total: number; bad: number;
+  actual: number | null; met: boolean; budget_allowed: number; budget_left: number | null; bad_example: string | null;
+};
+export type Latency = { count: number; p50: number | null; p95: number | null; max: number | null };
+export type HealthReport = {
+  measured_at: string;
+  window_days: number;
+  objectives: Objective[];
+  queue: {
+    waiting: number; oldest_wait_seconds: number | null; stale_after_seconds: number;
+    running: { job_id: number; document_id: number; worker_id: string; running_seconds: number; attempts: number; stale: boolean }[];
+  };
+  latency: { text_layer: Latency; tesseract: Latency };
+  touchless: { read: number; touchless: number; rate: number | null };
+  confidence: { fields: number; bands: { label: string; from: number; count: number }[] };
+  failures_24h: { job_id: number; document_id: number; filename: string; error: string; attempts: number; finished_at: string }[];
+  workers: { worker_id: string; jobs: number; last_seen: string }[];
+  audit: { ok: boolean; checked: number; reason: string; head?: string };
+};
