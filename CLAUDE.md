@@ -440,3 +440,11 @@ Inline styles only for values computed at runtime (an avatar's colour, a progres
   nearest-rank, so a p95 is a duration that really happened. Touchless = submitted to approval by the system (actor
   NULL in the audit log). Rejected: worker heartbeats and a metrics store (Prometheus): the job table already has the
   timestamps, and one more service is one more thing to run offline.
+- **Pay smarter** (`app/pay_smarter.py`, read-only advice on Payments → Ready to pay): first rule that applies wins.
+  (1) The vendor's early-payment discount window is open → pay by its last day. The discount is 2% of the **pre-tax
+  subtotal**, which is how all 9 discounts in the history were taken (AP-00015: 2% of $1,856.50 = $37.13). (2) The
+  vendor takes cards → a single-use card on the due date: locked to them and the exact amount, no bank details to swap.
+  (3) Otherwise their usual method on the due date, not earlier. "Use this" opens the invoice with that method picked;
+  a person still clicks Pay. **The payment form doesn't deduct discounts** (that's workflow code, outside a read-only
+  feature), so the advice says so rather than promising it. Missed this year: 10 discounts, $827.77 (paid after day
+  10). **No card rewards rate is assumed:** it's `CARD_REWARDS_RATE`, default 0, and at 0 no rewards line is shown.

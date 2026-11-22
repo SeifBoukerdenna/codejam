@@ -635,3 +635,14 @@ button.row { border: 0; background: none; width: 100%; color: inherit; }
 .speed-figures > div { display: flex; flex-direction: column; align-items: flex-end; min-width: 64px; }
 .bands { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-3); }
 .band { display: flex; flex-direction: column; gap: var(--space-1); }
+
+/* ── Pay smarter ── */
+.row-sub.wrap { white-space: normal; overflow: visible; }
+.suggestion { align-items: flex-start; cursor: default; }
+.suggestion .row-end { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
+/* A link that looks like the soft secondary pill (it navigates, so it's a link, not a button). */
+.pill-link { display: inline-flex; align-items: center; height: 32px; padding: 0 var(--space-4); border-radius: 999px;
+  background: var(--surface-2); color: var(--ink); font-weight: 600; font-size: var(--text-sm); white-space: nowrap; }
+.pill-link:hover { background: var(--line); color: var(--ink); }
+.suggestion .row-title { white-space: normal; }
+.row-sub.text-negative { color: var(--red); }

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from app import breakdowns, findings
+from app import breakdowns, findings, pay_smarter
 from app.auth import current_user, require
 from app.db import get_conn
 from app.routes.invoices import payment_resource
@@ -37,6 +37,12 @@ ORDER_BY_STATUS = {
     "settled": "p.paid_date DESC, p.payment_id DESC",
     "cancelled": "p.payment_id DESC",
 }
+
+
+@router.get("/payments/suggestions")
+def payment_suggestions(conn=Depends(get_conn)):
+    """Pay smarter: how and when to pay each approved invoice, and this year's missed savings (pay_smarter.py)."""
+    return pay_smarter.suggestions(conn)
 
 
 @router.get("/payments")

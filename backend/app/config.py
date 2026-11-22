@@ -2,6 +2,7 @@
 worker machine."""
 
 import os
+from decimal import Decimal
 from datetime import date
 from pathlib import Path
 
@@ -26,3 +27,7 @@ AUDIT_KEY = os.environ.get("AUDIT_KEY", "harborline-dev-audit-key").encode()
 
 # Rendered page images for the side-by-side invoice view (re-created on demand, so any folder works).
 PAGE_CACHE_DIR = Path(os.environ.get("PAGE_CACHE_DIR", "/tmp/harborline-pages"))
+
+# Card rewards earned per dollar paid by card, as a fraction ("0.01" = 1%). Default 0: the brief gives no rate, and
+# Pay smarter (pay_smarter.py) never invents one. Set it to your real rate to see the rewards line.
+CARD_REWARDS_RATE = Decimal(os.environ.get("CARD_REWARDS_RATE", "0"))

@@ -1,7 +1,7 @@
 import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
 import { App, Button, Tooltip } from "antd";
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { send, type Email, type FieldSource, type InvoiceDetail as Data, type Permission } from "../api";
 import { ReasonModal, useRunner } from "../components/actions";
 import CardPanel from "../components/CardPanel";
@@ -56,7 +56,9 @@ function InvoiceView({ data, email, reload }: { data: Data; email?: Email; reloa
   const [modal, setModal] = useState<null | "decline" | "reject" | "cancel">(null);
   const [editing, setEditing] = useState(false);
   const [onboarding, setOnboarding] = useState(false);
-  const [method, setMethod] = useState<string | null>(null);
+  // "Use this" on Payments (Pay smarter) opens the invoice with ?pay=CARD: the method is picked, the click is still yours.
+  const [params] = useSearchParams();
+  const [method, setMethod] = useState<string | null>(["EFT", "CARD", "CHEQUE"].includes(params.get("pay") ?? "") ? params.get("pay") : null);
   const [active, setActive] = useState<string | null>(null);
   const [help, setHelp] = useState(false);
   const [storyOpen, setStoryOpen] = useState(false);

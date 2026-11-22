@@ -574,3 +574,20 @@ export type HealthReport = {
   workers: { worker_id: string; jobs: number; last_seen: string }[];
   audit: { ok: boolean; checked: number; reason: string; head?: string };
 };
+
+/** GET /payments/suggestions: Pay smarter (backend/app/pay_smarter.py). Advice only; a person still pays. */
+export type PaySuggestion = {
+  invoice_id: string; vendor_name: string; vendor_invoice_number: string | null; total_cents: number; currency: string;
+  due_date: string; method: "EFT" | "CHEQUE" | "CARD"; date: string; saves_cents: number; pay_cents: number;
+  reason: string; held: string | null;
+};
+export type PaySuggestions = {
+  suggestions: PaySuggestion[];
+  year: {
+    discounts_taken: { count: number; cents: number };
+    discounts_missed: { count: number; cents: number; breakdown: Breakdown };
+    could_have_been_card: { count: number; cents: number; vendors: string[] };
+    rewards_rate: string;
+    rewards_cents: number | null;
+  };
+};

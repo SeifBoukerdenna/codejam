@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { Link, useSearchParams } from "react-router";
-import type { InvoiceRow, PaymentRow, PaymentsPage } from "../api";
+import type { InvoiceRow, PaySuggestions, PaymentRow, PaymentsPage } from "../api";
 import { CellWho, DataTable, type Column } from "../components/DataTable";
-import { Avatar, Chips, EmptyState, Hero, Loading, Money, Notice, Page, PageTitle, Panel, Stat, StatusPill } from "../components/ui";
+import { Avatar, Chips, EmptyState, Hero, Loading, Money, Notice, Page, PageTitle, Panel, Section, Stat, StatusPill } from "../components/ui";
 import { METHOD, plural, shortDate } from "../format";
 import { useApi, useSession } from "../session";
 
@@ -27,6 +27,7 @@ export default function Payments() {
   const isInvoices = tab.key === "approved";
   const page = useApi<PaymentsPage>(`/payments?status=${(isInvoices ? ["prepared"] : tab.statuses).join(",")}`);
   const approved = useApi<InvoiceRow[]>("/invoices?status=approved");
+  const smarter = useApi<PaySuggestions>("/payments/suggestions");
   const data = page.data;
 
   // Opened without a tab: land on the first one in the money's order that has something in it, not an empty one.
@@ -80,6 +81,20 @@ export default function Payments() {
           <div className="small muted">Deducted automatically from the next payment to {credits.map((c) => c.vendor_name).join(", ")}.</div>
         </Panel>
       )}
+      {smarter.data && (
+        <Panel title="This year">
+          <Stat label={`Early-payment discounts taken (${smarter.data.year.discounts_taken.count})`}
+            value={<Money cents={smarter.data.year.discounts_taken.cents} />} />
+          <Stat label={`Discounts missed (${smarter.data.year.discounts_missed.count})`}
+            value={<Money cents={smarter.data.year.discounts_missed.cents} breakdown={smarter.data.year.discounts_missed.breakdown} />} />
+          <Stat label={`Sent by transfer or cheque to vendors who take cards (${smarter.data.year.could_have_been_card.count})`}
+            value={<Money cents={smarter.data.year.could_have_been_card.cents} />} />
+          {smarter.data.year.rewards_cents !== null && (
+            <Stat label={`Card rewards at your rate (${smarter.data.year.rewards_rate})`} value={<Money cents={smarter.data.year.rewards_cents} />} />
+          )}
+          <div className="small muted mt-2">{smarter.data.year.could_have_been_card.vendors.join(", ")} take cards.</div>
+        </Panel>
+      )}
       <p className="small muted m-0">Simulated EFT, cheque and virtual card. No real money moves.</p>
     </>
   );
@@ -108,6 +123,30 @@ export default function Payments() {
             to={(p) => `/invoices/${p.invoice_id}`} empty={<EmptyState title="Nothing here" />} />
         )}
       </div>
+      {isInvoices && !!smarter.data?.suggestions.length && (
+        <Section title="How to pay them" extra={<span>Advice only: you still choose</span>}>
+          <div className="list">
+            {smarter.data.suggestions.map((s) => (
+              <div key={s.invoice_id} className="row suggestion">
+                <Avatar name={s.vendor_name} />
+                <div className="row-main">
+                  <div className="row-title">
+                    {s.vendor_name} · {METHOD[s.method] ?? s.method} {s.saves_cents ? "by" : "on"} {shortDate(s.date, today)}
+                    {!!s.saves_cents && <> · saves <Money cents={s.saves_cents} currency={s.currency} /></>}
+                  </div>
+                  <div className="row-sub wrap">{s.reason}</div>
+                  {s.held && <div className="row-sub wrap text-negative">{s.held}</div>}
+                </div>
+                <div className="row-end">
+                  <span className="row-amount"><Money cents={s.total_cents} currency={s.currency} /></span>
+                  {/* Opens the invoice with this method picked; the Pay button there is still a person's click. */}
+                  <Link className="pill-link" to={`/invoices/${s.invoice_id}?pay=${s.method}`}>Use this</Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
     </Page>
   );
 }
