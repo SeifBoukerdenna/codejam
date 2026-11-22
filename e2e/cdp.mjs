@@ -26,9 +26,11 @@ export async function launch({ width = 1440, height = 1000, mobile = false } = {
   let id = 0;
   const pending = new Map();
   const errors = [];
+  const listeners = new Map();   // CDP event name -> handlers (e.g. Page.screencastFrame for the demo video)
   ws.addEventListener("message", (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
+    for (const fn of listeners.get(msg.method) ?? []) fn(msg.params);
     if (msg.method === "Runtime.exceptionThrown") errors.push(msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text);
     if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error")
       errors.push(msg.params.args.map((a) => a.value ?? a.description).join(" "));
@@ -72,11 +74,14 @@ export async function launch({ width = 1440, height = 1000, mobile = false } = {
     const r = target.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2, disabled: !!target.disabled };
   })()`;
+  // hooks.point(x, y) runs before every click: the demo video uses it to glide a visible cursor to the target.
+  const hooks = { point: null };
   const click = async (text, { within, wait = 400 } = {}) => {
     let pos;
     for (let t = 0; t < 8000 && !pos; t += 150) { pos = await evaluate(locate(text, within)); if (!pos) await sleep(150); }
     if (!pos) throw new Error(`no visible element with text "${text}"`);
     if (pos.disabled) throw new Error(`"${text}" is disabled`);
+    if (hooks.point) await hooks.point(pos.x, pos.y);
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
       await send("Input.dispatchMouseEvent", { type, x: pos.x, y: pos.y, button: "left", clickCount: 1 });
     await sleep(wait);
@@ -115,6 +120,7 @@ export async function launch({ width = 1440, height = 1000, mobile = false } = {
     await sleep(300);
   };
   const text = () => evaluate("document.body.innerText");
+  const on = (method, fn) => listeners.set(method, [...(listeners.get(method) ?? []), fn]);
   const close = () => { ws.close(); chrome.kill(); };
-  return { send, evaluate, waitFor, click, fill, go, shot, text, press, errors, close, sleep };
+  return { send, on, hooks, evaluate, waitFor, click, fill, go, shot, text, press, errors, close, sleep };
 }

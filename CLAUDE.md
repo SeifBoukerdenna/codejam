@@ -448,3 +448,8 @@ Inline styles only for values computed at runtime (an avatar's colour, a progres
   a person still clicks Pay. **The payment form doesn't deduct discounts** (that's workflow code, outside a read-only
   feature), so the advice says so rather than promising it. Missed this year: 10 discounts, $827.77 (paid after day
   10). **No card rewards rate is assumed:** it's `CARD_REWARDS_RATE`, default 0, and at 0 no rewards line is shown.
+- **The demo is a test** (`e2e/demo.mjs`, `make demo-test`): 10 steps in Chrome, each checked on screen and through
+  the API, reseeding before and after. **The backup video comes from the same script** (`make demo-video` →
+  `docs/demo-run.webm`, 3 min): human pace, a drawn cursor and captions, recorded from Chrome's screencast and encoded
+  with ffmpeg. So the video can't show a demo the test says is broken. Rejected: a hand-made screen recording (stale
+  after every change). The captions and cursor are injected only when recording; the app has no demo code in it.

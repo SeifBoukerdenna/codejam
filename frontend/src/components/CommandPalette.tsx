@@ -114,7 +114,7 @@ function Palette({ close }: { close: () => void }) {
   const switchTo = (u: User) => () => {
     close();
     setUserId(u.user_id);
-    message.success(`You're now ${u.full_name}, ${(ROLE[u.role] ?? u.role).toLowerCase()}.`);
+    message.success(`You're now ${u.full_name} (${ROLE[u.role] ?? u.role}).`);
   };
 
   const items = useMemo<Item[]>(() => {

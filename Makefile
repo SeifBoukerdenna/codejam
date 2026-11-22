@@ -1,4 +1,4 @@
-.PHONY: up down reseed test traps psql tamper verify-audit
+.PHONY: up down reseed test traps psql tamper verify-audit demo-test demo-video
 
 up:      ## Start db + api + worker + web. UI on http://localhost:5173, API on http://localhost:8000/docs
 	docker compose up --build
@@ -23,3 +23,9 @@ tamper:  ## Q&A demo: as the DB superuser, bypass the append-only trigger, rewri
 
 verify-audit:  ## Re-check every signature in the audit chain
 	docker compose run --rm api python -c "from app import audit_chain, db; print(audit_chain.verify(db.connect()))"
+
+demo-test:  ## The 3:30 demo as a test in Chrome (e2e/demo.mjs): reseed, every step clicked and checked, then reseed again
+	node e2e/demo.mjs; status=$$?; $(MAKE) -s reseed >/dev/null; exit $$status
+
+demo-video: ## The same demo at human pace, recorded to docs/demo-run.webm (needs ffmpeg), then reseed again
+	RECORD=docs/demo-run.webm node e2e/demo.mjs; status=$$?; $(MAKE) -s reseed >/dev/null; exit $$status
