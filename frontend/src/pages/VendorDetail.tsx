@@ -149,7 +149,7 @@ export default function VendorDetail() {
             {data.purchase_orders.map((po) => (
               <Row key={po.po_id} title={po.po_id} sub={`${po.description} · ${po.status.replace("_", " ")}`}
                 end={<><span className="row-amount"><Money cents={po.remaining_cents} breakdown={po.breakdown} /></span>
-                  <span className="small muted">left of {money(po.total_amount_cents, "CAD", true)}</span></>} />
+                  <span className="small muted">left of {money(po.total_amount_cents)}</span></>} />
             ))}
           </div>
         </Section>

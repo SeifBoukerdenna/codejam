@@ -76,6 +76,11 @@ export function DataTable<T>({ columns, rows, rowKey, to, onOpen, label, empty, 
   };
 
   const linkKey = linkColumn ?? columns[0]?.key;
+  // Empty: just the message. Column headings over nothing say nothing, and the columns hidden on narrow tables
+  // left the header bar short of the box.
+  if (!loading && rows && rows.length === 0) {
+    return <div className="dt-wrap dt-empty">{empty ?? <EmptyState title="Nothing here" />}</div>;
+  }
   return (
     <div className="dt-wrap" tabIndex={0} onKeyDown={onKeyDown}
       aria-label={`${label}. ${clickable ? "Use j and k or the arrow keys to move, Enter to open." : ""}`}>
@@ -91,9 +96,6 @@ export function DataTable<T>({ columns, rows, rowKey, to, onOpen, label, empty, 
               {columns.map((c) => <td key={c.key} className={colClass(c)}><div className="skeleton skeleton-line" /></td>)}
             </tr>
           ))}
-          {!loading && rows && rows.length === 0 && (
-            <tr><td colSpan={columns.length}>{empty ?? <EmptyState title="Nothing here" />}</td></tr>
-          )}
           {list.map((row, i) => {
             const target = to?.(row);
             return (

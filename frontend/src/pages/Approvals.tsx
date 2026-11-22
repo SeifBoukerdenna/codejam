@@ -19,7 +19,7 @@ export default function Approvals() {
   const columns: Column<MyApproval>[] = [
     { key: "vendor", title: "Vendor", render: (a) => (
       <CellWho avatar={<Avatar name={a.vendor_name} size="sm" />} main={a.vendor_name ?? "Unknown vendor"}
-        sub={`#${a.vendor_invoice_number ?? a.invoice_id}`} />) },
+        sub={`Invoice ${a.vendor_invoice_number ?? a.invoice_id}`} />) },
     { key: "step", title: "Your step", optional: "wide", width: "status", render: (a) => (
       <span>{APPROVER_ROLE[a.approver_role] ?? a.approver_role}{a.on_behalf_of_name ? ` · for ${a.on_behalf_of_name}` : ""}</span>) },
     { key: "date", title: "Invoice date", optional: "wide", width: "date", render: (a) => shortDate(a.invoice_date, today) },

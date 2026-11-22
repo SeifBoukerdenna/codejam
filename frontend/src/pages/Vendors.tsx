@@ -58,7 +58,7 @@ export default function Vendors() {
         <div className="list">
           {top.map((v) => (
             <Row key={v.vendor_id} to={`/vendors/${v.vendor_id}`} avatar={<Avatar name={v.legal_name} size="sm" />}
-              title={v.legal_name} end={<span className="row-amount small">{money(v.paid_this_year_cad_cents, "CAD", true)}</span>} />
+              title={v.legal_name} end={<span className="row-amount small"><Money cents={v.paid_this_year_cad_cents} /></span>} />
           ))}
         </div>
       </Panel>

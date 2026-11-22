@@ -646,3 +646,4 @@ button.row { border: 0; background: none; width: 100%; color: inherit; }
 .pill-link:hover { background: var(--line); color: var(--ink); }
 .suggestion .row-title { white-space: normal; }
 .row-sub.text-negative { color: var(--red); }
+header + .hero { margin-top: var(--space-5); }

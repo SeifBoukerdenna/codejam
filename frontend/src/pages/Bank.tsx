@@ -105,7 +105,9 @@ export default function Bank() {
       <div className="mt-5">
         <DataTable label={{ open: "Bank debits to explain", done: "Bank debits handled", matched: "Bank debits matched to a payment" }[tab]}
           columns={columns} rows={shown} rowKey={(l) => l.bank_txn_id} onOpen={(l) => setOpenId(l.bank_txn_id)}
-          empty={<EmptyState title={tab === "open" ? "Nothing left to explain" : "Nothing here yet"} />} />
+          empty={<EmptyState title={tab === "open" ? "Nothing left to explain" : tab === "done" ? "Nothing handled yet" : "No matches yet"}>
+            {tab === "done" ? "Fees you book, debits you ask the bank about and cheques you mark cashed land here, with who did it." : undefined}
+          </EmptyState>} />
       </div>
 
       <LineDrawer line={d.lines.find((l) => l.bank_txn_id === openId) ?? null} onClose={() => setOpenId(null)} />

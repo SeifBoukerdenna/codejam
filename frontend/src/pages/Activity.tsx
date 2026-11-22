@@ -69,13 +69,13 @@ export default function Activity() {
 
   const recoveryColumns: Column<Recovery>[] = [
     { key: "vendor", title: "Vendor", render: (r) => (
-      <CellWho avatar={<Avatar name={r.vendor_name} size="sm" />} main={r.vendor_name} sub={`#${r.invoice_number} · ${HOW[r.kind]}`} />) },
+      <CellWho avatar={<Avatar name={r.vendor_name} size="sm" />} main={r.vendor_name} sub={`Invoice ${r.invoice_number} · ${HOW[r.kind]}`} />) },
     { key: "status", title: "Status", width: "status", render: (r) => <Pill tone={RECOVERY[r.status].tone}>{RECOVERY[r.status].label}</Pill> },
     { key: "amount", title: "Paid too much", align: "right", width: "amount", render: (r) => <Money cents={r.overpaid_cad_cents} /> },
   ];
   const taxColumns: Column<TaxAtRisk>[] = [
     { key: "vendor", title: "Invoice", render: (t) => (
-      <CellWho avatar={<Avatar name={t.vendor_name} size="sm" />} main={`${t.vendor_name ?? "Unknown vendor"} · #${t.vendor_invoice_number ?? t.invoice_id}`}
+      <CellWho avatar={<Avatar name={t.vendor_name} size="sm" />} main={`${t.vendor_name ?? "Unknown vendor"} · Invoice ${t.vendor_invoice_number ?? t.invoice_id}`}
         sub={t.fix} />) },
     { key: "status", title: "Status", optional: true, width: "status", render: (t) => <StatusPill kind="invoice" status={t.status} /> },
     { key: "amount", title: "At risk", align: "right", width: "amount", render: (t) => <Money cents={t.at_risk_cents} currency={t.currency} /> },

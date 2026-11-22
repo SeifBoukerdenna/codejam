@@ -9,13 +9,13 @@ import { useApi, useSession } from "../session";
 type Tab = "approved" | "prepared" | "held" | "going" | "outstanding" | "settled";
 
 // Tabs follow the money: approved → prepared (to release) → going out → paid. Held sits beside them.
-const TABS: { key: Tab; label: string; hero: string; statuses: string[] }[] = [
-  { key: "approved", label: "Ready to pay", hero: "Approved, not paid yet", statuses: [] },
-  { key: "prepared", label: "To release", hero: "Waiting to be released", statuses: ["prepared"] },
-  { key: "held", label: "On hold", hero: "On hold", statuses: ["held"] },
-  { key: "going", label: "Going out", hero: "Going out", statuses: ["released", "scheduled"] },
-  { key: "outstanding", label: "Uncashed cheques", hero: "Cheques not cashed yet", statuses: ["outstanding"] },
-  { key: "settled", label: "Paid", hero: "Paid", statuses: ["settled"] },
+const TABS: { key: Tab; label: string; hero: string; statuses: string[]; none: string; empty: string }[] = [
+  { key: "approved", label: "Ready to pay", hero: "Approved, not paid yet", statuses: [], none: "Nothing waiting to be paid", empty: "Approved invoices wait here until AP prepares their payment." },
+  { key: "prepared", label: "To release", hero: "Waiting to be released", statuses: ["prepared"], none: "Nothing to release", empty: "Payments AP prepares wait here for a finance manager or controller to release them." },
+  { key: "held", label: "On hold", hero: "On hold", statuses: ["held"], none: "Nothing on hold", empty: "A payment is held when its vendor or bank details aren't safe to pay yet." },
+  { key: "going", label: "Going out", hero: "Going out", statuses: ["released", "scheduled"], none: "Nothing going out", empty: "Released and scheduled payments show here until the bank confirms them." },
+  { key: "outstanding", label: "Uncashed cheques", hero: "Cheques not cashed yet", statuses: ["outstanding"], none: "No uncashed cheques", empty: "Every cheque we sent has been cashed." },
+  { key: "settled", label: "Paid", hero: "Paid", statuses: ["settled"], none: "Nothing paid yet", empty: "Paid invoices and their payments show here." },
 ];
 
 const DEFAULT_ORDER: Tab[] = ["prepared", "approved", "held", "going", "outstanding", "settled"];
@@ -66,7 +66,7 @@ export default function Payments() {
     <>
       {data.about_to_pay_twice.map((f) => (
         <Notice key={f.payment_ids.join()} tone="negative" title={`About to pay ${f.vendor_name} twice`}>
-          #{f.invoice_number}: {f.payment_ids.join(" and ")} are both scheduled. Stop one:{" "}
+          Invoice {f.invoice_number}: {f.payment_ids.join(" and ")} are both scheduled. Stop one:{" "}
           {f.invoice_ids.map((id) => <Link key={id} to={`/invoices/${id}`} className="strong">{id} </Link>)}
         </Notice>
       ))}
@@ -120,7 +120,7 @@ export default function Payments() {
             to={(i) => `/invoices/${i.invoice_id}`} empty={<EmptyState title="Nothing waiting to be paid" />} />
         ) : (
           <DataTable label={`${tab.label} payments`} columns={paymentColumns} rows={data.payments} rowKey={(p) => p.payment_id}
-            to={(p) => `/invoices/${p.invoice_id}`} empty={<EmptyState title="Nothing here" />} />
+            to={(p) => `/invoices/${p.invoice_id}`} empty={<EmptyState title={tab.none}>{tab.empty}</EmptyState>} />
         )}
       </div>
       {isInvoices && !!smarter.data?.suggestions.length && (

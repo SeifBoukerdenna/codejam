@@ -102,7 +102,7 @@ export function Hero({ label, value, cents, currency, countUp, meta, breakdown }
 }) {
   const shown = useCountUp(cents ?? 0, !!countUp);
   return (
-    <div>
+    <div className="hero">
       <div className="hero-label">{label}</div>
       <div className="hero-value">
         {cents !== undefined ? <Money cents={countUp ? shown : cents} currency={currency} breakdown={breakdown} /> : value}

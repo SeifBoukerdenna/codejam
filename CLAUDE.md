@@ -453,3 +453,6 @@ Inline styles only for values computed at runtime (an avatar's colour, a progres
   `docs/demo-run.webm`, 3 min): human pace, a drawn cursor and captions, recorded from Chrome's screencast and encoded
   with ffmpeg. So the video can't show a demo the test says is broken. Rejected: a hand-made screen recording (stale
   after every change). The captions and cursor are injected only when recording; the app has no demo code in it.
+- **One way to write an invoice number:** "Invoice 000961" (or "Credit note CN-…"), never "#000961"; the "#" is kept
+  for audit event numbers only. **Empty tables show only their message**, which says what would be there ("Payments
+  AP prepares wait here for a finance manager…"), not "Nothing here".
