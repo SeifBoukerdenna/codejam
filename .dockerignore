@@ -1,0 +1,6 @@
+.git
+frontend
+e2e
+docs
+**/__pycache__
+**/.pytest_cache

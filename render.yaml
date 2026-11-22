@@ -1,0 +1,24 @@
+# Render Blueprint: the API + worker (deploy/Dockerfile) and its Postgres. The frontend is on Vercel
+# (frontend/vercel.json forwards /api/* here).
+services:
+  - type: web
+    name: harborline-ap-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./deploy/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: harborline-ap-db
+          property: connectionString
+      - key: AUDIT_KEY
+        generateValue: true
+databases:
+  - name: harborline-ap-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "17"
+    databaseName: ap
+    user: ap
