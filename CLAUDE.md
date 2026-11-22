@@ -456,3 +456,14 @@ Inline styles only for values computed at runtime (an avatar's colour, a progres
 - **One way to write an invoice number:** "Invoice 000961" (or "Credit note CN-…"), never "#000961"; the "#" is kept
   for audit event numbers only. **Empty tables show only their message**, which says what would be there ("Payments
   AP prepares wait here for a finance manager…"), not "Nothing here".
+- **French / English** (`i18n.tsx`, `fr.ts`): one function, `t("English text")`, and a dictionary keyed by the English, no
+  framework; a missing translation shows the English, never a broken key. **A screen is fully French or not switched:**
+  Home, Inbox, Approvals and Payments are translated with the frame (menu, search, user switcher); on every other screen
+  the whole page, menu included, stays English and the switch says "Page en anglais seulement". **Sentences the server
+  writes stay English** (check results, reasons, advice): translating them means translating the rules' wording in
+  Python. **Amounts keep one format in both languages** ($1,234.56 CAD), so a number on the projector reads the same;
+  dates follow the language ("2 nov."). French needs some English words two ways (an invoice is *payée*, a payment
+  *payé*): those keys carry a context, `"Paid|payment"`, which English drops. The choice is kept in localStorage (per
+  browser). `node e2e/i18n.mjs` checks every covered screen in French, for six roles, at both sizes.
+- **Overflow checks compare with the screen's real width.** On a phone, content that's too wide widens the page itself,
+  so `innerWidth` grows with it and hides the overflow (found when the EN | FR switch widened the phone header).

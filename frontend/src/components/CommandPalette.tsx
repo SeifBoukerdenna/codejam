@@ -5,6 +5,7 @@ import { useNavigate } from "react-router";
 import { api, send, type ChainCheck, type SearchResults, type User } from "../api";
 import { ROLE, VENDOR_STATUS, shortDate, statusOf } from "../format";
 import { useSession } from "../session";
+import { t } from "../i18n";
 import { useRunner } from "./actions";
 import { Avatar, Kbd, Money, Pill, StatusPill } from "./ui";
 
@@ -75,7 +76,7 @@ export default function CommandPalette() {
   }, []);
   return (
     <Modal open={open} onCancel={() => setOpen(false)} footer={null} closable={false} width={640} destroyOnHidden
-      className="palette-modal" title={<span className="sr-only">Search and switch user</span>}>
+      className="palette-modal" title={<span className="sr-only">{t("Search and switch user")}</span>}>
       <Palette close={() => setOpen(false)} />
     </Modal>
   );
@@ -114,7 +115,7 @@ function Palette({ close }: { close: () => void }) {
   const switchTo = (u: User) => () => {
     close();
     setUserId(u.user_id);
-    message.success(`You're now ${u.full_name} (${ROLE[u.role] ?? u.role}).`);
+    message.success(t("You're now {name} ({role}).", { name: u.full_name, role: t(ROLE[u.role] ?? u.role) }));
   };
 
   const items = useMemo<Item[]>(() => {
@@ -122,52 +123,52 @@ function Palette({ close }: { close: () => void }) {
     const list: Item[] = [];
     const pages = PAGES.filter((p) => !p.roles || (user && p.roles.includes(user.role)));
     const person = (u: User): Item => ({
-      key: `u-${u.user_id}`, group: "Switch user", icon: <Avatar name={u.full_name} size="sm" round />,
-      title: <>{u.full_name}{u.user_id === userId && <span className="muted"> · you</span>}</>,
-      sub: `${[u.title, ROLE[u.role] ?? u.role].filter((t, i, all) => all.findIndex((o) => o.toLowerCase() === t.toLowerCase()) === i).join(" · ")}${u.status !== "active" ? ` · ${u.status.replace("_", " ")}` : ""}`,
-      right: <span className="palette-hint">Switch</span>, run: switchTo(u),
+      key: `u-${u.user_id}`, group: t("Switch user"), icon: <Avatar name={u.full_name} size="sm" round />,
+      title: <>{u.full_name}{u.user_id === userId && <span className="muted"> · {t("you")}</span>}</>,
+      sub: `${[u.title, t(ROLE[u.role] ?? u.role)].filter((t, i, all) => all.findIndex((o) => o.toLowerCase() === t.toLowerCase()) === i).join(" · ")}${u.status !== "active" ? ` · ${t(u.status.replace("_", " "))}` : ""}`,
+      right: <span className="palette-hint">{t("Switch")}</span>, run: switchTo(u),
     });
     if (peopleOnly) {
       return users.filter((u) => matches(words, userText(u))).slice(0, 12).map(person);
     }
     if (!words.length) {
       for (const r of recent) {
-        list.push({ key: `r-${r.key}`, group: "Recent", icon: <Avatar name={r.title} size="sm" />, title: r.title, sub: r.sub, run: go(r.to) });
+        list.push({ key: `r-${r.key}`, group: t("Recent"), icon: <Avatar name={r.title} size="sm" />, title: r.title, sub: r.sub, run: go(r.to) });
       }
-      for (const p of pages) list.push({ key: `p-${p.to}`, group: "Go to", icon: <ArrowRightOutlined />, title: p.title, run: go(p.to) });
+      for (const p of pages) list.push({ key: `p-${p.to}`, group: t("Go to"), icon: <ArrowRightOutlined />, title: t(p.title), run: go(p.to) });
     } else {
       // Vendors first: at most 5, and a name like "harlow" should show both look-alike vendors before their invoices.
       for (const v of found?.vendors ?? []) {
         const s = statusOf(VENDOR_STATUS, v.status);
-        list.push({ key: `v-${v.vendor_id}`, group: "Vendors", icon: <Avatar name={v.legal_name} size="sm" />, title: v.legal_name,
+        list.push({ key: `v-${v.vendor_id}`, group: t("Vendors"), icon: <Avatar name={v.legal_name} size="sm" />, title: v.legal_name,
           sub: v.lookalike_of
-            ? <>{v.vendor_id} · <Pill tone="negative">Looks like {v.lookalike_of}, but isn't</Pill></>
+            ? <>{v.vendor_id} · <Pill tone="negative">{t("Looks like {name}, but isn't", { name: v.lookalike_of })}</Pill></>
             : <>{v.vendor_id} · {v.category} · <Pill tone={s.tone}>{s.label}</Pill></>, run: go(`/vendors/${v.vendor_id}`) });
       }
       // Recently opened invoices go first among equal matches.
       const seen = new Map(recent.map((r, i) => [r.key, i]));
       const invoices = [...(found?.invoices ?? [])].sort((a, b) => (seen.get(a.invoice_id) ?? 99) - (seen.get(b.invoice_id) ?? 99));
       for (const i of invoices) {
-        list.push({ key: `i-${i.invoice_id}`, group: "Invoices", icon: <Avatar name={i.vendor_name} size="sm" />,
-          title: <>{i.vendor_name ?? "Unknown vendor"} <span className="muted">· {i.is_credit_note ? "credit note" : "invoice"} {i.vendor_invoice_number ?? "—"}</span></>,
+        list.push({ key: `i-${i.invoice_id}`, group: t("Invoices"), icon: <Avatar name={i.vendor_name} size="sm" />,
+          title: <>{i.vendor_name ?? t("Unknown vendor")} <span className="muted">· {t(i.is_credit_note ? "credit note" : "invoice")} {i.vendor_invoice_number ?? "—"}</span></>,
           sub: <>{i.invoice_id} · {shortDate(i.invoice_date, today)} · <StatusPill kind="invoice" status={i.status} /></>,
           right: <Money cents={i.total_cents} currency={i.currency} />, run: go(`/invoices/${i.invoice_id}`) });
       }
       for (const u of users.filter((u) => matches(words, userText(u))).slice(0, 4)) list.push(person(u));
-      for (const p of pages.filter((p) => matches(words, `${p.title} ${p.words}`))) {
-        list.push({ key: `p-${p.to}`, group: "Go to", icon: <ArrowRightOutlined />, title: p.title, run: go(p.to) });
+      for (const p of pages.filter((p) => matches(words, `${t(p.title)} ${p.title} ${p.words}`))) {
+        list.push({ key: `p-${p.to}`, group: t("Go to"), icon: <ArrowRightOutlined />, title: t(p.title), run: go(p.to) });
       }
     }
     const actions: (Item & { words: string })[] = [
-      { key: "a-switch", group: "Actions", icon: <SwapOutlined />, title: "Switch user…", sub: "Type “as” and a name or a role",
+      { key: "a-switch", group: t("Actions"), icon: <SwapOutlined />, title: t("Switch user…"), sub: t("Type “as” and a name or a role"),
         words: "switch user login who people role", run: () => { setQuery("as "); setActive(0); input.current?.focus(); } },
-      { key: "a-inbox", group: "Actions", icon: <ThunderboltOutlined />, title: "Read new emails", sub: "Sort the inbox and start reading the invoices",
-        words: "process inbox import emails intake", run: () => { close(); run(() => send("POST", "/inbox/process"), "Inbox read", undefined, { to: "/inbox", label: "See the inbox" }); } },
-      { key: "a-verify", group: "Actions", icon: <SafetyCertificateOutlined />, title: "Verify the audit log", sub: "Check every signed event, oldest to newest",
+      { key: "a-inbox", group: t("Actions"), icon: <ThunderboltOutlined />, title: t("Read new emails"), sub: t("Sort the inbox and start reading the invoices"),
+        words: "process inbox import emails intake", run: () => { close(); run(() => send("POST", "/inbox/process"), t("Inbox read"), undefined, { to: "/inbox", label: t("See the inbox") }); } },
+      { key: "a-verify", group: t("Actions"), icon: <SafetyCertificateOutlined />, title: t("Verify the audit log"), sub: t("Check every signed event, oldest to newest"),
         words: "audit chain integrity tamper signature verify", run: () => {
           close();
           api<ChainCheck>("/audit/verify")
-            .then((c) => (c.ok ? message.success(`The audit log is intact: ${c.checked} events checked.`) : message.error({ content: c.reason, duration: 8 })))
+            .then((c) => (c.ok ? message.success(t("The audit log is intact: {n} events checked.", { n: c.checked })) : message.error({ content: c.reason, duration: 8 })))
             .catch((e: Error) => message.warning(e.message));
         } },
     ];
@@ -194,12 +195,12 @@ function Palette({ close }: { close: () => void }) {
       <div className="palette-input">
         <SearchOutlined aria-hidden />
         <input ref={input} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKeyDown}
-          placeholder="Invoice number, vendor, amount, page… or “as Elise”" aria-label="Search, or type “as” and a name to switch user"
+          placeholder={t("Invoice number, vendor, amount, page… or “as Elise”")} aria-label={t("Search, or type “as” and a name to switch user")}
           role="combobox" aria-expanded aria-controls="palette-list" aria-autocomplete="list"
           aria-activedescendant={items[active] ? `palette-${active}` : undefined} spellCheck={false} autoComplete="off" />
         <Kbd>Esc</Kbd>
       </div>
-      <div className="palette-list" id="palette-list" role="listbox" aria-label="Results">
+      <div className="palette-list" id="palette-list" role="listbox" aria-label={t("Results")}>
         {items.map((it, i) => (
           <div key={it.key}>
             {(i === 0 || items[i - 1].group !== it.group) && <div className="palette-group" role="presentation">{it.group}</div>}
@@ -216,13 +217,13 @@ function Palette({ close }: { close: () => void }) {
         ))}
         {!items.length && !searching && (
           <div className="palette-empty">
-            <AppstoreOutlined aria-hidden /> Nothing matches “{query.trim()}”. Try an invoice number, a vendor, an amount like 6452.30, or “as” and a name.
+            <AppstoreOutlined aria-hidden /> {t("Nothing matches “{q}”. Try an invoice number, a vendor, an amount like 6452.30, or “as” and a name.", { q: query.trim() })}
           </div>
         )}
-        {searching && !items.length && <div className="palette-empty">Searching…</div>}
+        {searching && !items.length && <div className="palette-empty">{t("Searching…")}</div>}
       </div>
       <div className="palette-foot hide-touch">
-        <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> to move</span><span><Kbd>Enter</Kbd> to open</span><span>Type <Kbd>as</Kbd> and a name to switch user</span>
+        <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> {t("to move")}</span><span><Kbd>Enter</Kbd> {t("to open")}</span><span>{t("Type")} <Kbd>as</Kbd> {t("and a name to switch user")}</span>
       </div>
     </div>
   );

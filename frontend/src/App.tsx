@@ -12,12 +12,14 @@ import InvoiceDetail from "./pages/InvoiceDetail";
 import Payments from "./pages/Payments";
 import VendorDetail from "./pages/VendorDetail";
 import Vendors from "./pages/Vendors";
+import { LanguageProvider } from "./i18n";
 import { SessionProvider } from "./session";
 
 export default function App() {
   return (
     <SessionProvider>
       <BrowserRouter>
+        <LanguageProvider>
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<Home />} />
@@ -34,6 +36,7 @@ export default function App() {
             <Route path="*" element={<Page><EmptyState title="Page not found">Check the address, or go back home.</EmptyState></Page>} />
           </Route>
         </Routes>
+        </LanguageProvider>
       </BrowserRouter>
     </SessionProvider>
   );

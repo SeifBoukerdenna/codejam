@@ -12,7 +12,7 @@ for (const [name, opts] of [["projector", { width: 1024, height: 576 }], ["phone
     for (const p of PAGES) {
       await b.go(p);
       const r = await b.evaluate(`(() => ({
-        page: document.documentElement.scrollWidth > innerWidth + 1,
+        page: Math.max(document.documentElement.scrollWidth, innerWidth) > ${opts.width} + 1,   // innerWidth grows with overflow on phones
         tables: [...document.querySelectorAll('.dt-wrap')].filter((w) => w.scrollWidth > w.clientWidth + 1).length,
         smallText: [...document.querySelectorAll('.main p, .main td, .row-title, .check-text')].filter((e) => parseFloat(getComputedStyle(e).fontSize) < 15).length,
       }))()`);

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { EmptyState } from "./ui";
+import { t } from "../i18n";
 
 // The work queues (Inbox, Payments, Bank, Vendors, Approvals, Audit log) as one table: sticky header, the whole
 // row clickable, a selected row you can move with j/k or the arrow keys and open with Enter, the same height
@@ -79,11 +80,11 @@ export function DataTable<T>({ columns, rows, rowKey, to, onOpen, label, empty, 
   // Empty: just the message. Column headings over nothing say nothing, and the columns hidden on narrow tables
   // left the header bar short of the box.
   if (!loading && rows && rows.length === 0) {
-    return <div className="dt-wrap dt-empty">{empty ?? <EmptyState title="Nothing here" />}</div>;
+    return <div className="dt-wrap dt-empty">{empty ?? <EmptyState title={t("Nothing here")} />}</div>;
   }
   return (
     <div className="dt-wrap" tabIndex={0} onKeyDown={onKeyDown}
-      aria-label={`${label}. ${clickable ? "Use j and k or the arrow keys to move, Enter to open." : ""}`}>
+      aria-label={`${label}. ${clickable ? t("Use j and k or the arrow keys to move, Enter to open.") : ""}`}>
       <table className="dt">
         <thead>
           <tr>

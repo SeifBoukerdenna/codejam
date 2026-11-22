@@ -1,5 +1,6 @@
 import type { PaymentRow as Payment } from "../api";
 import { METHOD, shortDate } from "../format";
+import { t } from "../i18n";
 import { Avatar, Money, Row, StatusPill } from "./ui";
 
 /** One payment in a list (Home). Links to its invoice, where the whole story lives. */
@@ -10,7 +11,7 @@ export default function PaymentRow({ p, today }: { p: Payment; today: string }) 
       to={`/invoices/${p.invoice_id}`}
       avatar={<Avatar name={p.vendor_name} />}
       title={p.vendor_name}
-      sub={p.hold_reason ?? `${when} · ${METHOD[p.method] ?? p.method}`}
+      sub={p.hold_reason ?? `${when} · ${t(METHOD[p.method] ?? p.method)}`}
       end={<>
         <span className="row-amount"><Money cents={p.amount_cents} currency={p.currency} breakdown={p.breakdown} inLink /></span>
         {/* A status only where it changes what you'd do: held, waiting for release, uncashed, stopped. */}

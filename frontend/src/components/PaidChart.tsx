@@ -1,5 +1,6 @@
 import { useMemo, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { shortDate } from "../format";
+import { t } from "../i18n";
 
 // "Paid to vendors this year" as a running total, like a portfolio-value chart: one line, a soft wash under
 // it, no axes. Hovering (or arrow keys) moves a crosshair and the page's big number follows it.
@@ -63,7 +64,7 @@ export default function PaidChart({ points, range, onRange, onPoint }: {
   return (
     <div className="chart">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" tabIndex={0}
-        aria-label={`Money paid out, running total, ${range}. Use the arrow keys to read values.`}
+        aria-label={t("Money paid out, running total, {range}. Use the arrow keys to read values.", { range: t(range) })}
         onPointerMove={onMove} onPointerLeave={() => pick(null)} onKeyDown={onKey} onBlur={() => pick(null)}>
         <defs>
           <linearGradient id="paid-wash" x1="0" y1="0" x2="0" y2="1">
@@ -81,9 +82,9 @@ export default function PaidChart({ points, range, onRange, onPoint }: {
         )}
       </svg>
       <div className="spread">
-        <div className="chart-ranges" role="group" aria-label="Chart range">
+        <div className="chart-ranges" role="group" aria-label={t("Chart range")}>
           {(["1M", "3M", "YTD"] as Range[]).map((r) => (
-            <button key={r} className={r === range ? "on" : ""} aria-pressed={r === range} onClick={() => onRange(r)}>{r}</button>
+            <button key={r} className={r === range ? "on" : ""} aria-pressed={r === range} onClick={() => onRange(r)}>{t(r)}</button>
           ))}
         </div>
         <span className="small muted">{shortDate(points[0].date)} – {shortDate(points.at(-1)!.date)}</span>

@@ -1,11 +1,16 @@
 // Turning API data into words. Money arrives as integer cents; dividing by 100 here is for display only,
 // no arithmetic on money ever happens in the browser.
 
+import { lang, t } from "./i18n";
+
 export type Tone = "neutral" | "positive" | "warning" | "negative" | "info";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
   "October", "November", "December"];
+const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const MOIS_LONGS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
+  "novembre", "décembre"];
 
 /** Sign and digits of an amount in cents, e.g. { sign: "−", amount: "1,614.21" }. Formatting only: the browser
  *  never adds, subtracts or rounds money; it shows what the API computed. */
@@ -38,6 +43,7 @@ export function shortDate(iso: string | null | undefined, today?: string): strin
   if (!iso) return "—";
   const { y, m, d } = parts(iso);
   const sameYear = today ? parts(today).y === y : false;
+  if (lang() === "fr") return `${d} ${MOIS[m - 1]}${sameYear ? "" : ` ${y}`}`;
   return `${MONTHS[m - 1]} ${d}${sameYear ? "" : `, ${y}`}`;
 }
 
@@ -45,6 +51,7 @@ export function shortDate(iso: string | null | undefined, today?: string): strin
 export function longDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const { y, m, d } = parts(iso);
+  if (lang() === "fr") return `${d} ${MOIS_LONGS[m - 1]} ${y}`;
   return `${MONTHS_LONG[m - 1]} ${d}, ${y}`;
 }
 
@@ -54,12 +61,14 @@ export function dateTime(iso: string | null | undefined, today?: string): string
   const time = iso.length > 10 ? iso.slice(11, 16) : "";
   if (!time) return shortDate(iso, today);
   const [h, min] = time.split(":").map(Number);
+  if (lang() === "fr") return `${shortDate(iso, today)}, ${h} h ${String(min).padStart(2, "0")}`;
   const ampm = h >= 12 ? "PM" : "AM";
   return `${shortDate(iso, today)}, ${((h + 11) % 12) + 1}:${String(min).padStart(2, "0")} ${ampm}`;
 }
 
 export function monthName(yyyyMm: string, long = false): string {
   const m = Number(yyyyMm.slice(5, 7));
+  if (lang() === "fr") return (long ? MOIS_LONGS : MOIS)[m - 1];
   return (long ? MONTHS_LONG : MONTHS)[m - 1];
 }
 
@@ -76,7 +85,7 @@ export function firstName(fullName: string): string {
 }
 
 export function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
+  return lang() === "fr" ? (n < 2 ? one : many) : n === 1 ? one : many;   // French: 0 and 1 are singular
 }
 
 /** "Keystone Racking Systems Accounts Receivable" -> "Keystone Racking Systems" */
@@ -138,23 +147,25 @@ export const APPROVER_ROLE: Record<string, string> = {
 };
 
 export function statusOf(map: Record<string, Status>, key: string): Status {
-  return map[key] ?? { label: key.replace(/_/g, " "), tone: "neutral" };
+  const s = map[key] ?? { label: key.replace(/_/g, " "), tone: "neutral" };
+  // A payment's "Paid" / "On hold" / "Scheduled" is masculine in French, an invoice's feminine (see t()).
+  return { ...s, label: t(map === PAYMENT_STATUS && ["Paid", "Scheduled"].includes(s.label) ? `${s.label}|payment` : s.label) };
 }
 
 /** Audit timestamps are real moments (timestamptz), so unlike invoice dates they ARE converted to the
  *  viewer's local time. "Nov 21, 10:07 a.m." */
 export function instant(iso: string): string {
   // en-US for the "6:30 PM" style, the same as dateTime() above, so one page never mixes "PM" and "p.m.".
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+  return new Intl.DateTimeFormat(lang() === "fr" ? "fr-CA" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
     .format(new Date(iso));
 }
 
 /** For things that just happened on screen: "just now", "4 min ago". Older than a day shows the date. */
 export function ago(iso: string): string {
   const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (seconds < 45) return "just now";
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)} h ago`;
+  if (seconds < 45) return t("just now");
+  if (seconds < 3600) return t("{n} min ago", { n: Math.round(seconds / 60) });
+  if (seconds < 86400) return t("{n} h ago", { n: Math.round(seconds / 3600) });
   return instant(iso);
 }
 

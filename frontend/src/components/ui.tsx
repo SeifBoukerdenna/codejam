@@ -4,6 +4,7 @@ import { App, Button, Tooltip } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { Breakdown, Permission } from "../api";
+import { t } from "../i18n";
 import { INVOICE_STATUS, PAYMENT_STATUS, initials, moneyParts, statusOf, type Tone } from "../format";
 
 // Every screen is built from these. Need something new? Add it here (and its style in styles.css), never as
@@ -227,7 +228,7 @@ const CHECK_WORD: Record<Tone, string> = { positive: "Passed", warning: "Needs a
 export function Check({ tone, children, meta }: { tone: Tone; children: ReactNode; meta?: ReactNode }) {
   return (
     <div className="check">
-      <div className={`check-icon ${tone}`} role="img" aria-label={CHECK_WORD[tone]}>{CHECK_ICON[tone]}</div>
+      <div className={`check-icon ${tone}`} role="img" aria-label={t(CHECK_WORD[tone])}>{CHECK_ICON[tone]}</div>
       <div className="check-text">{children}{meta && <div className="check-meta">{meta}</div>}</div>
     </div>
   );
@@ -340,13 +341,13 @@ export function Draft({ text, to, subject, actions }: { text: string; to?: strin
   const mailto = to && `mailto:${to}?subject=${encodeURIComponent(subject ?? "")}&body=${encodeURIComponent(text)}`;
   return (
     <div className="draft">
-      {to && <div className="draft-field"><span>To</span>{to}</div>}
-      {subject && <div className="draft-field"><span>Subject</span>{subject}</div>}
+      {to && <div className="draft-field"><span>{t("To")}</span>{to}</div>}
+      {subject && <div className="draft-field"><span>{t("Subject")}</span>{subject}</div>}
       <div className="draft-body">{text}</div>
       <div className="draft-actions">
         <Button className="soft" shape="round" icon={<CopyOutlined />}
-          onClick={() => copyText(text).then(() => message.success("Copied"), () => message.error("Couldn't copy"))}>Copy</Button>
-        {mailto && <Button className="soft" shape="round" icon={<MailOutlined />} href={mailto}>Open in mail app</Button>}
+          onClick={() => copyText(text).then(() => message.success(t("Copied")), () => message.error(t("Couldn't copy")))}>{t("Copy")}</Button>
+        {mailto && <Button className="soft" shape="round" icon={<MailOutlined />} href={mailto}>{t("Open in mail app")}</Button>}
         {actions}
       </div>
     </div>
@@ -366,7 +367,7 @@ export function EmptyState({ title, children, icon }: { title: ReactNode; childr
 /** Grey placeholders shaped like the content, so nothing jumps when the data arrives. */
 export function Skeleton({ lines = 3, hero }: { lines?: number; hero?: boolean }) {
   return (
-    <div aria-busy="true" aria-label="Loading">
+    <div aria-busy="true" aria-label={t("Loading")}>
       {hero && <div className="skeleton skeleton-hero" />}
       {Array.from({ length: lines }, (_, i) => (
         <div key={i} className="skeleton skeleton-line" />
@@ -392,7 +393,7 @@ export function Kbd({ children }: { children: ReactNode }) {
 export function Loading({ error }: { error?: string | null }) {
   return (
     <Page>
-      {error ? <Notice tone="negative" title="Couldn't load this page">{error}</Notice> : <Skeleton hero lines={6} />}
+      {error ? <Notice tone="negative" title={t("Couldn't load this page")}>{error}</Notice> : <Skeleton hero lines={6} />}
     </Page>
   );
 }

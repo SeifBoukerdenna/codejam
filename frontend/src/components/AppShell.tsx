@@ -8,6 +8,7 @@ import { useApi, useSession } from "../session";
 import { CHANGED } from "./actions";
 import CommandPalette, { OPEN_PALETTE, PALETTE_KEYS } from "./CommandPalette";
 import { Avatar, Kbd } from "./ui";
+import { LanguageSwitch, t } from "../i18n";
 
 type Item = { to: string; label: string; short?: string; icon: ReactNode; end?: boolean; count?: number };
 
@@ -22,22 +23,22 @@ export default function AppShell() {
     window.addEventListener(CHANGED, reload);
     return () => window.removeEventListener(CHANGED, reload);
   }, [reload]);
-  const t = data?.todo;
+  const todo = data?.todo;
   const isFinance = user && ["finance_manager", "controller_admin"].includes(user.role);
   const isClerk = user?.role === "ap_clerk";
   const nav: Item[] = [
-    { to: "/", label: "Home", icon: <HomeOutlined />, end: true },
-    { to: "/inbox", label: "Inbox", icon: <InboxOutlined />,
-      count: isClerk || isFinance ? (t?.emails_to_sort ?? 0) + (t?.needs_review ?? 0) + (t?.replies_to_send ?? 0) : 0 },
-    { to: "/approvals", label: "Approvals", short: "Approve", icon: <CheckCircleOutlined />, count: t?.waiting_for_me ?? 0 },
-    { to: "/payments", label: "Payments", short: "Pay", icon: <SwapOutlined />,
-      count: isFinance ? t?.payments_to_release ?? 0 : isClerk ? t?.approved_to_pay ?? 0 : 0 },
-    { to: "/bank", label: "Bank", icon: <BankOutlined />, count: isClerk || isFinance ? t?.bank_to_explain ?? 0 : 0 },
-    { to: "/vendors", label: "Vendors", icon: <ShopOutlined /> },
-    { to: "/activity", label: "Activity", short: "Audit", icon: <AuditOutlined /> },
-    { to: "/fool", label: "Try to fool us", short: "Fool us", icon: <ExperimentOutlined /> },
+    { to: "/", label: t("Home"), icon: <HomeOutlined />, end: true },
+    { to: "/inbox", label: t("Inbox"), short: t("Inbox|tab"), icon: <InboxOutlined />,
+      count: isClerk || isFinance ? (todo?.emails_to_sort ?? 0) + (todo?.needs_review ?? 0) + (todo?.replies_to_send ?? 0) : 0 },
+    { to: "/approvals", label: t("Approvals"), short: t("Approve"), icon: <CheckCircleOutlined />, count: todo?.waiting_for_me ?? 0 },
+    { to: "/payments", label: t("Payments"), short: t("Pay"), icon: <SwapOutlined />,
+      count: isFinance ? todo?.payments_to_release ?? 0 : isClerk ? todo?.approved_to_pay ?? 0 : 0 },
+    { to: "/bank", label: t("Bank"), icon: <BankOutlined />, count: isClerk || isFinance ? todo?.bank_to_explain ?? 0 : 0 },
+    { to: "/vendors", label: t("Vendors"), short: t("Vendors|tab"), icon: <ShopOutlined /> },
+    { to: "/activity", label: t("Activity"), short: t("Audit"), icon: <AuditOutlined /> },
+    { to: "/fool", label: t("Try to fool us"), short: t("Fool us"), icon: <ExperimentOutlined /> },
     // The machinery's health is for the people who answer for reliability and integrity (auth.py: health.view).
-    ...(user && ["controller_admin", "auditor"].includes(user.role) ? [{ to: "/health", label: "System health", short: "Health", icon: <DashboardOutlined /> }] : []),
+    ...(user && ["controller_admin", "auditor"].includes(user.role) ? [{ to: "/health", label: t("System health"), short: t("Health"), icon: <DashboardOutlined /> }] : []),
   ];
 
   return (
@@ -45,7 +46,7 @@ export default function AppShell() {
       <aside className="sidebar">
         <NavLink to="/" className="brand"><span className="brand-mark">H</span>Harborline</NavLink>
         <button className="search-button" onClick={openPalette}>
-          <SearchOutlined aria-hidden /><span className="grow">Search</span><Kbd>{PALETTE_KEYS}</Kbd>
+          <SearchOutlined aria-hidden /><span className="grow">{t("Search")}</span><Kbd>{PALETTE_KEYS}</Kbd>
         </button>
         <nav className="side-nav">
           {nav.map((n) => (
@@ -56,14 +57,16 @@ export default function AppShell() {
           ))}
         </nav>
         <div className="side-user">
-          {today && <div className="today-chip">Today is {longDate(today)}</div>}
+          <LanguageSwitch />
+          {today && <div className="today-chip">{t("Today is {date}", { date: longDate(today) })}</div>}
           <UserSwitcher />
         </div>
       </aside>
 
       <header className="mobile-top">
         <NavLink to="/" className="brand brand-compact"><span className="brand-mark">H</span>Harborline</NavLink>
-        <button className="icon-button" aria-label="Search, or switch user" onClick={openPalette}><SearchOutlined /></button>
+        <button className="icon-button" aria-label={t("Search, or switch user")} onClick={openPalette}><SearchOutlined /></button>
+        <LanguageSwitch compact />
         <UserSwitcher compact />
       </header>
 
@@ -91,25 +94,25 @@ function UserSwitcher({ compact }: { compact?: boolean }) {
       variant="borderless"
       suffix={null}
       showSearch={{ filterOption: (input, option) => (option?.search ?? "").includes(input.toLowerCase()) }}
-      placeholder="Choose who you are"
+      placeholder={t("Choose who you are")}
       value={userId ?? undefined}
       onChange={setUserId}
       popupMatchSelectWidth={320}
       placement={compact ? "bottomRight" : "topLeft"}
-      aria-label="Act as user"
+      aria-label={t("Act as user")}
       options={users.map((u) => ({
         value: u.user_id, label: u.full_name, u,
         search: `${u.user_id} ${u.full_name} ${u.title} ${u.department}`.toLowerCase(),
       }))}
       labelRender={(selected) => {
         const u = users.find((x) => x.user_id === selected.value);
-        if (!u) return <span className="muted">Choose who you are</span>;
+        if (!u) return <span className="muted">{t("Choose who you are")}</span>;
         return (
           <span className="user-pill">
             <Avatar name={u.full_name} size="sm" round dark />
             <span className="min-0">
               <span className="user-pill-name">{u.full_name}</span>
-              {!compact && <span className="user-pill-role">{ROLE[u.role] ?? u.role}</span>}
+              {!compact && <span className="user-pill-role">{t(ROLE[u.role] ?? u.role)}</span>}
             </span>
           </span>
         );
@@ -120,8 +123,8 @@ function UserSwitcher({ compact }: { compact?: boolean }) {
           <div className="user-pill user-option">
             <Avatar name={u.full_name} size="sm" round />
             <div className="min-0">
-              <div className="user-pill-name">{u.full_name}{u.status !== "active" && <span className="muted"> · {u.status.replace("_", " ")}</span>}</div>
-              <div className="user-pill-role">{u.title} · {ROLE[u.role] ?? u.role}</div>
+              <div className="user-pill-name">{u.full_name}{u.status !== "active" && <span className="muted"> · {t(u.status.replace("_", " "))}</span>}</div>
+              <div className="user-pill-role">{u.title} · {t(ROLE[u.role] ?? u.role)}</div>
             </div>
           </div>
         );
