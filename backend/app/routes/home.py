@@ -4,10 +4,10 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends
 
-from app import config, reconcile
+from app import breakdowns, config, reconcile
 from app.auth import current_user
 from app.db import get_conn
-from app.routes.payments import PAYMENT_ROWS_SQL
+from app.routes.payments import PAYMENT_ROWS_SQL, with_breakdowns
 
 router = APIRouter(prefix="/api")
 
@@ -80,17 +80,26 @@ def home(conn=Depends(get_conn), user=Depends(current_user)):
         """SELECT count(*) AS count, coalesce(sum(amount_cad_cents), 0)::bigint AS total_cad_cents
            FROM payments WHERE status IN ('prepared', 'released', 'scheduled')"""
     ).fetchone()
-    upcoming = conn.execute(
+    upcoming = with_breakdowns(conn.execute(
         f"{PAYMENT_ROWS_SQL} WHERE p.status IN ('prepared', 'released', 'scheduled') "
         f"ORDER BY p.scheduled_date, p.payment_id LIMIT 5"
-    ).fetchall()
+    ).fetchall())
+    # The hero's number, split by how the money left (the same rows as the chart).
+    paid_by_method = conn.execute(
+        """SELECT method, sum(amount_cad_cents)::bigint AS cents FROM payments
+           WHERE paid_date BETWEEN %s AND %s GROUP BY method ORDER BY cents DESC""", (year_start, today)).fetchall()
+    paid_this_year = sum(m["total_cad_cents"] for m in paid_by_month)
+    payment_count = sum(m["count"] for m in paid_by_month)
 
     return {
         "bank_in_question_cents": bank["unexplained_cents"] + bank["waiting_cents"],
+        "bank_in_question_breakdown": breakdowns.bank_in_question(bank),
         "bank_waiting": bank["unexplained_cents"] == 0 and bank["waiting_cents"] > 0,
         "today": today.isoformat(),
-        "paid_this_year_cad_cents": sum(m["total_cad_cents"] for m in paid_by_month),
-        "payments_this_year": sum(m["count"] for m in paid_by_month),
+        "paid_this_year_cad_cents": paid_this_year,
+        "paid_this_year_breakdown": breakdowns.by_method(
+            paid_by_method, paid_this_year, f"{payment_count} payments from January 1 to {today:%B %-d}, in CAD."),
+        "payments_this_year": payment_count,
         "paid_by_month": paid_by_month,
         "paid_daily": paid_daily,
         "paid_running": paid_running,

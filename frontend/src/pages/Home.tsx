@@ -86,16 +86,16 @@ export default function Home() {
           <div className="list">
             <LinkRow to="/activity?tab=paid_twice" title="Paid twice"
               sub={f.to_recover_count ? `${f.to_recover_count} still to recover` : "All recovered"}
-              end={<span className="row-amount"><Money cents={f.to_recover_cad_cents} /></span>} />
+              end={<span className="row-amount"><Money cents={f.to_recover_cad_cents} breakdown={f.to_recover_breakdown} inLink /></span>} />
             {f.tax_at_risk_cents > 0 && (
               <LinkRow to="/activity?tab=tax" title="Tax we can't claim back"
                 sub={`${f.tax_invoice_count} ${plural(f.tax_invoice_count, "invoice", "invoices")} to fix`}
-                end={<span className="row-amount"><Money cents={f.tax_at_risk_cents} /></span>} />
+                end={<span className="row-amount"><Money cents={f.tax_at_risk_cents} breakdown={f.tax_at_risk_breakdown} inLink /></span>} />
             )}
             {data.bank_in_question_cents > 0 && (
               <LinkRow to="/bank" title="Bank debits to explain"
                 sub={data.bank_waiting ? "Waiting for the bank's answer" : "Ask the bank"}
-                end={<span className="row-amount"><Money cents={data.bank_in_question_cents} /></span>} />
+                end={<span className="row-amount"><Money cents={data.bank_in_question_cents} breakdown={data.bank_in_question_breakdown} inLink /></span>} />
             )}
           </div>
         </Panel>
@@ -117,6 +117,7 @@ export default function Home() {
         label="Paid to vendors this year"
         cents={hover ? hover.cents : data.paid_this_year_cad_cents}
         countUp={!hover}
+        breakdown={hover ? null : data.paid_this_year_breakdown}
         meta={hover
           ? <span>As of {longDate(hover.date)}</span>
           : range === "YTD"

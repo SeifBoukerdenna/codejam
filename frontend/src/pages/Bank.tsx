@@ -79,7 +79,7 @@ export default function Bank() {
     <>
       <PageTitle title="Bank statement" />
       <div className="mt-5">
-        <Hero label="Debits we can't explain" cents={d.in_question_cents}
+        <Hero label="Debits we can't explain" cents={d.in_question_cents} breakdown={d.in_question_breakdown}
           meta={<span>{!d.unexplained_cents && d.waiting_cents ? "Asked the bank, waiting for their answer · "
             : !d.unexplained_cents ? "Every debit is explained · " : ""}
             {d.matched} of {d.lines.length} debits match a payment · {shortDate(d.statement_from, today)} to {shortDate(d.statement_to, today)}</span>} />

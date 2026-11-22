@@ -162,7 +162,7 @@ export default function Activity() {
       {tab === "paid_twice" && (
         <>
           <div className="mt-5">
-            <Hero label="Paid twice this year" cents={f.overpaid_cad_cents}
+            <Hero label="Paid twice this year" cents={f.overpaid_cad_cents} breakdown={f.overpaid_breakdown}
               meta={recovered
                 ? <span><Money cents={recovered} /> recovered · <Money cents={f.to_recover_cad_cents} /> to go</span>
                 : <span>{paidTwice} {plural(paidTwice, "double payment", "double payments")} to get back from vendors</span>} />
@@ -183,7 +183,7 @@ export default function Activity() {
       {tab === "tax" && (
         <>
           <div className="mt-5">
-            <Hero label="Tax we can't claim back" cents={f.tax_at_risk_cents}
+            <Hero label="Tax we can't claim back" cents={f.tax_at_risk_cents} breakdown={f.tax_at_risk_breakdown}
               meta={<span>if we pay {f.tax_invoice_count} {plural(f.tax_invoice_count, "invoice", "invoices")} as they are</span>} />
           </div>
           <div className="mt-5">

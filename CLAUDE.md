@@ -415,3 +415,16 @@ Inline styles only for values computed at runtime (an avatar's colour, a progres
   People, pages and actions are matched in the browser (already loaded); "as elise" lists only people, and picking
   one is the same demo login as the user picker. Refused actions show the server's reason.
 - **Recent items** (last 6 invoices and vendors opened) are kept in localStorage: per browser, a convenience only.
+- **Show the math** (`app/breakdowns.py`): hover or focus an important amount (invoice total, subtotal, each tax, a
+  line, the PO balance, a payment with credit notes deducted, Home's hero and "money to get back", the Bank hero,
+  Activity's heroes, a vendor's PO) to see its parts. Built on the server with the checks' own helpers (apply_rate, the
+  PO balance from `checks/context.py`), so a tooltip can't disagree with a check. **The parts always add up:** a printed
+  number that doesn't is shown with its gap as a part ("Not explained by the subtotal and tax: $100.00" on Evergreen,
+  "24 × $150.00 = $3,600.00 + not explained $200.00" on Northstar). Rejected: showing only the check's sentence (you
+  can't see where the number comes from) or doing the sum in the browser (never money math there).
+- **Inside a link** (Home's rows, payment rows) the breakdown shows on hover only: a second focus stop inside a link is
+  invalid HTML. The page the link opens has the same number, reachable by keyboard.
+- **Lists aren't broken down again:** a total sitting right above its rows (Payments tabs, the Bank page's to-do totals)
+  gets no tooltip; the rows are its breakdown.
+- **The tax line is labelled with the tax actually charged** (Northbound charges HST on an Alberta delivery: "HST"),
+  not the one the province expects. The check says it's wrong; the label says what's printed.

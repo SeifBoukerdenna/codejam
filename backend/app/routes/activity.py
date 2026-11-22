@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from app import audit, audit_chain, findings
+from app import audit, audit_chain, breakdowns, findings
 from app.auth import can, current_user, require
 from app.db import get_conn
 
@@ -61,11 +61,14 @@ def audit_findings(conn=Depends(get_conn)):
         "recovered_cad_cents": sum(r["overpaid_cad_cents"] for r in recs if r["status"] == "recovered"),
         "to_recover_cad_cents": sum(r["overpaid_cad_cents"] for r in recs if r["status"] != "recovered"),
         "to_recover_count": sum(r["status"] != "recovered" for r in recs),
+        "to_recover_breakdown": breakdowns.paid_twice(recs, still_open=True),
+        "overpaid_breakdown": breakdowns.paid_twice(recs, still_open=False),
         "recovery_totals": {s: sum(r["overpaid_cad_cents"] for r in recs if r["status"] == s)
                             for s in ("to_recover", "requested", "recovered")},
         "split_invoices": findings.split_invoices(conn),
         "tax_at_risk": at_risk,
         "tax_at_risk_cents": sum(r["at_risk_cents"] for r in at_risk),
+        "tax_at_risk_breakdown": breakdowns.tax_at_risk(at_risk),
         "tax_invoice_count": len({r["invoice_id"] for r in at_risk}),
         "tax_by_problem": sorted(
             ({"code": code, "cents": sum(r["at_risk_cents"] for r in at_risk if r["code"] == code)}

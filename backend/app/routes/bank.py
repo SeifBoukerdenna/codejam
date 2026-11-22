@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app import audit, reconcile
+from app import audit, breakdowns, reconcile
 from app.auth import can, current_user, require
 from app.db import get_conn
 
@@ -29,6 +29,7 @@ def bank_page(conn=Depends(get_conn), user=Depends(current_user)):
                    for todo in ("ask_bank", "book_fee", "mark_cashed")}
     return {**result, "letter": reconcile.letter_to_bank(result, signer), "bank_fee_account": _bank_fee_account(conn),
             "todo_totals": todo_totals, "in_question_cents": result["unexplained_cents"] + result["waiting_cents"],
+            "in_question_breakdown": breakdowns.bank_in_question(result),
             "can_act": can(conn, user, "bank.reconcile").as_dict()}
 
 

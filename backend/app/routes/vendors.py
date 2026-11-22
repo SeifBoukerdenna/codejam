@@ -8,7 +8,7 @@ from datetime import date
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from app import audit, config
+from app import audit, breakdowns, config
 from app.auth import can, current_user, require
 from app.db import get_conn
 from app.pipeline import evaluate
@@ -112,7 +112,9 @@ def get_vendor(vendor_id: str, conn=Depends(get_conn), user=Depends(current_user
                               bank_account=vendor["bank_account"], email=vendor["ap_contact_email"], exclude_id=vendor_id)
     return {
         "vendor": _mask(vendor), "paid_this_year": paid, "bank_changes": bank_changes, "contracts": contracts,
-        "purchase_orders": purchase_orders, "invoices": invoices, "similar": similar,
+        "purchase_orders": [{**po, "breakdown": breakdowns.po_balance(po["po_id"], po["description"], po["total_amount_cents"],
+                                                                   po["invoiced_cents"])} for po in purchase_orders],
+        "invoices": invoices, "similar": similar,
         "lookalike_of": lookalike_of_paid_vendor(conn, {**vendor, "bank_account": _vendor(conn, vendor_id)["bank_account"]}),
         "actions": {
             "approve": can(conn, user, "vendor.approve", vendor).as_dict() if vendor["status"] == "pending_review" else None,

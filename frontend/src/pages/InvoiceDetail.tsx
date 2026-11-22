@@ -168,7 +168,7 @@ function InvoiceView({ data, email, reload }: { data: Data; email?: Email; reloa
           title={inv.vendor_id ? <Link to={`/vendors/${inv.vendor_id}`}>{inv.vendor_name}</Link> : x?.fields.vendor_name ?? "Unknown vendor"}
           sub={`${inv.is_credit_note ? "Credit note" : "Invoice"} ${inv.vendor_invoice_number ?? "—"} · ${inv.invoice_id}`} />
         <Hero label={inv.is_credit_note ? "Credit" : "Amount"} cents={inv.total_cents ?? undefined} currency={inv.currency}
-          meta={inv.currency !== "CAD" && inv.total_cad_cents !== null
+          breakdown={data.math.total} meta={inv.currency !== "CAD" && inv.total_cad_cents !== null
             ? <span>≈ <Money cents={inv.total_cad_cents} /> at {inv.fx_rate_to_cad} on {shortDate(inv.invoice_date, today)}</span>
             : <span>Due {shortDate(inv.due_date, today)}</span>} />
       </div>
@@ -218,7 +218,7 @@ function InvoiceView({ data, email, reload }: { data: Data; email?: Email; reloa
           {pay && (
             <Panel title="Payment">
               <Stat label="Status" value={<StatusPill kind="payment" status={pay.status} />} />
-              <Stat label="Amount" value={<Money cents={pay.amount_cents} currency={pay.currency} />} />
+              <Stat label="Amount" value={<Money cents={pay.amount_cents} currency={pay.currency} breakdown={pay.breakdown} />} />
               {!!pay.credit_applied_cents && <Stat label="Credit deducted" value={<Money cents={pay.credit_applied_cents} />} />}
               <Stat label="Method" value={METHOD[pay.method] ?? pay.method} />
               <Stat label={pay.paid_date ? "Paid" : "Date"} value={shortDate(pay.paid_date ?? pay.scheduled_date, today)} />
@@ -291,7 +291,9 @@ function InvoiceView({ data, email, reload }: { data: Data; email?: Email; reloa
               { label: "Department", value: inv.department_name ?? "Not set" },
               { label: "Requested by", value: inv.requester_name ?? "Not set" },
               { label: "Delivered to", value: inv.ship_to_province ? PROVINCE[inv.ship_to_province] ?? inv.ship_to_province : "—" },
-              { label: "Purchase order", value: data.po ? data.po.po_id : "None" },
+              { label: "Purchase order", value: data.math.po
+                ? <>{data.math.po_id} · <Money cents={data.math.po.total_cents} breakdown={data.math.po} /> left</>
+                : data.po ? data.po.po_id : "None" },
               { label: "Contract", value: data.contract ? `${data.contract.contract_id} · ${data.contract.description}` : "None" },
               { label: "Came in", value: email ? `Email · ${email.from_address}` : inv.source === "upload" ? "Upload" : inv.source === "history" ? "History" : "—" },
             ]} />
@@ -308,13 +310,17 @@ function InvoiceView({ data, email, reload }: { data: Data; email?: Email; reloa
                   </div>) },
                 { key: "qty", title: "Qty", align: "right", optional: true, width: "num", render: (l) => Number(l.quantity) },
                 { key: "unit", title: "Unit price", align: "right", optional: "wide", width: "amount", render: (l) => <Money cents={l.unit_price_cents} currency={inv.currency} /> },
-                { key: "amount", title: "Amount", align: "right", width: "amount", render: (l) => <Money cents={l.amount_cents} currency={inv.currency} /> },
+                { key: "amount", title: "Amount", align: "right", width: "amount", render: (l) => <Money cents={l.amount_cents} currency={inv.currency} breakdown={data.math.lines[String(l.line_no)]} /> },
               ]} />
             <div className="totals">
-              <div><span>Subtotal</span><Money cents={inv.subtotal_cents} currency={inv.currency} /></div>
-              {!!inv.gst_hst_cents && <div><span>{inv.ship_to_province === "ON" ? "HST" : "GST"}</span><Money cents={inv.gst_hst_cents} currency={inv.currency} /></div>}
-              {!!inv.pst_qst_cents && <div><span>{inv.ship_to_province === "QC" ? "QST" : "PST"}</span><Money cents={inv.pst_qst_cents} currency={inv.currency} /></div>}
-              <div className="grand"><span>Total</span><Money cents={inv.total_cents} currency={inv.currency} /></div>
+              {/* Hover or focus any amount for its arithmetic (data.math, built by breakdowns.py). The tax label is the
+                  tax actually charged (Northbound charges HST on an Alberta delivery), not the one the province expects. */}
+              <div><span>Subtotal</span><Money cents={inv.subtotal_cents} currency={inv.currency} breakdown={data.math.subtotal} /></div>
+              {!!inv.gst_hst_cents && <div><span>{data.math.taxes.gst_hst?.total_label ?? (inv.ship_to_province === "ON" ? "HST" : "GST")}</span>
+                <Money cents={inv.gst_hst_cents} currency={inv.currency} breakdown={data.math.taxes.gst_hst} /></div>}
+              {!!inv.pst_qst_cents && <div><span>{data.math.taxes.pst_qst?.total_label ?? (inv.ship_to_province === "QC" ? "QST" : "PST")}</span>
+                <Money cents={inv.pst_qst_cents} currency={inv.currency} breakdown={data.math.taxes.pst_qst} /></div>}
+              <div className="grand"><span>Total</span><Money cents={inv.total_cents} currency={inv.currency} breakdown={data.math.total} /></div>
             </div>
           </Section>
 

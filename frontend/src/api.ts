@@ -68,6 +68,8 @@ export type PaymentRow = {
   amount_cents: number;
   amount_cad_cents: number;
   credit_applied_cents: number;
+  // Why the amount differs from the invoice (credit notes deducted), from breakdowns.py.
+  breakdown?: Breakdown | null;
   reference: string | null;
   hold_reason: string | null;
 };
@@ -77,6 +79,7 @@ export type MonthTotal = { month: string; count: number; total_cad_cents: number
 export type HomeData = {
   today: string;
   paid_this_year_cad_cents: number;
+  paid_this_year_breakdown: Breakdown;
   payments_this_year: number;
   paid_by_month: MonthTotal[];
   paid_daily: { date: string; total_cad_cents: number; count: number }[];
@@ -84,6 +87,7 @@ export type HomeData = {
   paid_running: { date: string; cents: number }[];
   paid_change: Record<"1M" | "3M", number>;
   bank_in_question_cents: number;
+  bank_in_question_breakdown: Breakdown;
   bank_waiting: boolean;
   todo: Record<"bank_to_explain" | "emails_to_sort" | "replies_to_send" | "needs_review" | "on_hold" | "waiting_for_me" | "payments_to_release"
     | "approved_to_pay" | "payments_held", number>;
@@ -252,6 +256,7 @@ export type InvoiceDetail = {
   card: VirtualCard | null;
   card_attempts: CardAttempt[];
   bank_line: BankStatementLine | null;
+  math: InvoiceMath;
   in_transit: boolean;
 };
 
@@ -344,6 +349,9 @@ export type Findings = {
   overpaid_cad_cents: number;
   recovered_cad_cents: number;
   to_recover_cad_cents: number;
+  to_recover_breakdown: Breakdown;
+  overpaid_breakdown: Breakdown;
+  tax_at_risk_breakdown: Breakdown;
   to_recover_count: number;
   split_invoices: { vendor_name: string; invoice_ids: string[]; combined_cad_cents: number; message: string }[];
   recovery_totals: Record<"to_recover" | "requested" | "recovered", number>;
@@ -385,6 +393,7 @@ export type BankPage = {
   bank_fee_account: string;
   todo_totals: Record<"ask_bank" | "book_fee" | "mark_cashed", { count: number; cents: number }>;
   in_question_cents: number;
+  in_question_breakdown: Breakdown;
   can_act: { allowed: boolean; reason: string | null };
 };
 
@@ -479,6 +488,7 @@ export type VendorDetail = {
     total_amount_cents: number;
     invoiced_cents: number;
   remaining_cents: number;
+  breakdown: Breakdown;
     status: string;
     issue_date: string;
   }[];
@@ -525,3 +535,20 @@ export type SearchInvoice = {
 export type SearchVendor = { vendor_id: string; legal_name: string; status: string; category: string; gst_hst_number: string | null;
   lookalike_of: string | null };
 export type SearchResults = { invoices: SearchInvoice[]; vendors: SearchVendor[] };
+
+/** "Show the math": parts that add up to the number shown, built on the server (breakdowns.py). When a printed
+ *  number doesn't add up, the gap is one of the parts, so the arithmetic on screen is always true. */
+export type Breakdown = {
+  parts: { label: string; cents: number }[];
+  total_label?: string;
+  total_cents?: number;
+  note?: string | null;
+};
+export type InvoiceMath = {
+  lines: Record<string, Breakdown>;
+  taxes: { gst_hst?: Breakdown; pst_qst?: Breakdown };
+  subtotal: Breakdown | null;
+  total: Breakdown | null;
+  po: Breakdown | null;
+  po_id: string | null;
+};

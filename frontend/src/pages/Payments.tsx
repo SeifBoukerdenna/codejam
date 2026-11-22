@@ -50,7 +50,7 @@ export default function Payments() {
     { key: "date", title: tab.key === "settled" || tab.key === "outstanding" ? "Paid" : "Date", optional: "wide", width: "date",
       render: (p) => shortDate(p.paid_date ?? p.scheduled_date, today) },
     { key: "status", title: "Status", optional: true, width: "status", render: (p) => <StatusPill kind="payment" status={p.status} /> },
-    { key: "amount", title: "Amount", align: "right", width: "amount", render: (p) => <Money cents={p.amount_cents} currency={p.currency} /> },
+    { key: "amount", title: "Amount", align: "right", width: "amount", render: (p) => <Money cents={p.amount_cents} currency={p.currency} breakdown={p.breakdown} /> },
   ];
   const invoiceColumns: Column<InvoiceRow>[] = [
     { key: "vendor", title: "Vendor", render: (i) => (

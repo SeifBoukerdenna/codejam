@@ -3,7 +3,7 @@ import { CheckOutlined, CloseOutlined, CopyOutlined, ExclamationCircleFilled, Ex
 import { App, Button, Tooltip } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import type { Permission } from "../api";
+import type { Breakdown, Permission } from "../api";
 import { INVOICE_STATUS, PAYMENT_STATUS, initials, moneyParts, statusOf, type Tone } from "../format";
 
 // Every screen is built from these. Need something new? Add it here (and its style in styles.css), never as
@@ -32,24 +32,28 @@ export function PageTitle({ title, subtitle }: { title: ReactNode; subtitle?: Re
 
 /** An amount from the API, in integer cents. Always labelled CAD or USD; a credit is marked with a minus and
  *  "credit" for screen readers, never by colour alone. `breakdown` shows the server's arithmetic on hover/focus. */
-export type Breakdown = { parts: { label: string; cents: number }[]; total_label?: string; note?: string };
+export type { Breakdown };
 
-export function Money({ cents, currency = "CAD", breakdown, credit }: {
-  cents: number | null | undefined; currency?: string; breakdown?: Breakdown | null; credit?: boolean;
+/** `inLink`: the amount sits inside a link, where a second focus stop is invalid HTML; the breakdown then shows on
+ *  hover only, and the page the link opens shows the same numbers with keyboard access. */
+export function Money({ cents, currency = "CAD", breakdown, credit, inLink }: {
+  cents: number | null | undefined; currency?: string; breakdown?: Breakdown | null; credit?: boolean; inLink?: boolean;
 }) {
   if (cents === null || cents === undefined) return <span className="money">—</span>;
   const { sign, amount } = moneyParts(cents);
   const isCredit = credit ?? cents < 0;
   const body = (
     <span className={`money ${isCredit ? "credit" : ""} ${breakdown ? "has-breakdown" : ""}`}
-      tabIndex={breakdown ? 0 : undefined} aria-label={breakdown ? `${sign}$${amount} ${currency}, show the calculation` : undefined}>
+      tabIndex={breakdown && !inLink ? 0 : undefined}
+      aria-label={breakdown && !inLink ? `${sign}$${amount} ${currency}, show the calculation` : undefined}>
       {sign}${amount}<span className="money-ccy">{currency}</span>
       {isCredit && <span className="sr-only"> credit</span>}
     </span>
   );
   if (!breakdown) return body;
   return (
-    <Tooltip title={<BreakdownView breakdown={breakdown} total={cents} currency={currency} />} trigger={["hover", "focus"]}>
+    <Tooltip title={<BreakdownView breakdown={breakdown} total={breakdown.total_cents ?? cents} currency={currency} />}
+      trigger={inLink ? ["hover"] : ["hover", "focus"]}>
       {body}
     </Tooltip>
   );

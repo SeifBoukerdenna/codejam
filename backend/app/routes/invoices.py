@@ -11,8 +11,9 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import Response
 from psycopg.types.json import Jsonb
 
-from app import audit, audit_chain, config, findings, reconcile
+from app import audit, audit_chain, breakdowns, config, findings, reconcile
 from app.auth import can, current_user, require
+from app.checks.context import build_context
 from app.db import get_conn
 from app.extraction.extract import LABELS, doubtful_fields, overall
 from app.money import apply_rate, to_cents
@@ -113,6 +114,8 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
         """SELECT p.*, pu.full_name AS prepared_by_name, ru.full_name AS released_by_name FROM payments p
            LEFT JOIN users pu ON pu.user_id = p.prepared_by LEFT JOIN users ru ON ru.user_id = p.released_by
            WHERE p.invoice_id = %s ORDER BY p.payment_id""", (invoice_id,)).fetchall()
+    payment_rows = [{**p, "breakdown": breakdowns.payment_amount(invoice["total_cents"] or 0, p["credit_applied_cents"], p["amount_cents"])}
+                    for p in payment_rows]
     checks = conn.execute(
         f"""SELECT c.*, u.full_name AS acknowledged_by_name FROM check_results c
             LEFT JOIN users u ON u.user_id = c.acknowledged_by
@@ -172,6 +175,8 @@ def get_invoice(invoice_id: str, conn=Depends(get_conn), user=Depends(current_us
     return {
         "invoice": invoice, "lines": lines, "approvals": approval_rows, "payments": payment_rows, "checks": checks,
         "card": card, "card_attempts": card_attempts, "bank_line": bank_line, "in_transit": in_transit,
+        # Hover any amount on the page to see how it's made (breakdowns.py: same helpers as the checks).
+        "math": breakdowns.invoice_math(build_context(conn, invoice_id)),
         "history": history, "po": po, "contract": contract, "extraction": extraction, "audit_notes": audit_notes,
         "review_reasons": review_reasons(conn, invoice, stored_checks) if invoice["status"] == "needs_review" else [],
         "actions": actions_for(conn, user, invoice),

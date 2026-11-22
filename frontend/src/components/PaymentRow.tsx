@@ -12,7 +12,7 @@ export default function PaymentRow({ p, today }: { p: Payment; today: string }) 
       title={p.vendor_name}
       sub={p.hold_reason ?? `${when} · ${METHOD[p.method] ?? p.method}`}
       end={<>
-        <span className="row-amount"><Money cents={p.amount_cents} currency={p.currency} /></span>
+        <span className="row-amount"><Money cents={p.amount_cents} currency={p.currency} breakdown={p.breakdown} inLink /></span>
         {/* A status only where it changes what you'd do: held, waiting for release, uncashed, stopped. */}
         {["held", "prepared", "outstanding", "cancelled"].includes(p.status) && <StatusPill kind="payment" status={p.status} />}
       </>}
