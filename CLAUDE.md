@@ -404,3 +404,14 @@ Inline styles only for values computed at runtime (an avatar's colour, a progres
   in sessionStorage (this tab only). Rejected: a server "next invoice" endpoint (it would have to know which list and
   filter you came from).
 - **Times are written "7:19 PM"** everywhere (en-US style), so a page never mixes "PM" and "p.m.".
+- **Cmd+K search** (`app/search.py`): every typed word must match something on the row, and each kind of match is
+  worth points (AP id 100, invoice number 90, amount 70, part of the number 60, vendor name 40), so "orion 279" puts
+  Orion's 279 first. Numbers compare like the duplicate check (`583` finds `FA-000583`); "6452" means $6,452.00 to
+  $6,452.99, "$6,452.30" exactly that. The ~500 invoices are scored in Python: instant at 50 invoices a month, and the
+  rules read as code. Rejected: Postgres full-text search (it doesn't understand invoice numbers or amounts); at scale,
+  a pg_trgm index. Vendors are listed first, with the same look-alike warning as the vendor page.
+- **The palette itself** is in-house (`CommandPalette.tsx`, a text box and a list, the combobox ARIA pattern) inside
+  the AntD modal, which gives the focus trap and Esc. Rejected: a palette library (one more dependency to explain).
+  People, pages and actions are matched in the browser (already loaded); "as elise" lists only people, and picking
+  one is the same demo login as the user picker. Refused actions show the server's reason.
+- **Recent items** (last 6 invoices and vendors opened) are kept in localStorage: per browser, a convenience only.

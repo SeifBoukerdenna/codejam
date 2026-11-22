@@ -1,10 +1,11 @@
 import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
 import { App, Button, Tooltip } from "antd";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { send, type Email, type FieldSource, type InvoiceDetail as Data, type Permission } from "../api";
 import { ReasonModal, useRunner } from "../components/actions";
 import CardPanel from "../components/CardPanel";
+import { PALETTE_KEYS, rememberVisit } from "../components/CommandPalette";
 import { DataTable, readQueue } from "../components/DataTable";
 import DocumentViewer from "../components/DocumentViewer";
 import InvoiceEditor from "../components/InvoiceEditor";
@@ -68,6 +69,9 @@ function InvoiceView({ data, email, reload }: { data: Data; email?: Email; reloa
   const post = (path: string, body?: unknown) => () => send("POST", path, body ?? {});
   const payBy = method ?? inv.vendor_pay_method ?? "EFT";
   const sources = new Map((x?.field_sources ?? []).map((s) => [s.field, s]));
+  useEffect(() => rememberVisit({ key: inv.invoice_id, kind: "invoice", to: `/invoices/${inv.invoice_id}`,
+    title: inv.vendor_name ?? x?.fields.vendor_name ?? "Unknown vendor", sub: `Invoice ${inv.vendor_invoice_number ?? "—"} · ${inv.invoice_id} · ${amount}` }),
+  [inv.invoice_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The single next step for this person, in the order the work flows. If it exists but they may not do it,
   // it shows disabled with the server's reason: that's how separation of duties is visible in the demo.
@@ -337,7 +341,7 @@ function InvoiceView({ data, email, reload }: { data: Data; email?: Email; reloa
 
       <ShortcutsHelp open={help} onClose={() => setHelp(false)} items={[
         ["A", "Approve"], ["D", "Decline"], ["P", "Pay (or release)"], ["E", "Correct fields"],
-        ["[", "Previous invoice in the list"], ["]", "Next invoice in the list"], ["?", "This list"],
+        ["[", "Previous invoice in the list"], ["]", "Next invoice in the list"], ["?", "This list"], [PALETTE_KEYS, "Search, or switch user"],
       ]} />
       <ReasonModal open={modal !== null}
         title={modal === "decline" ? "Decline this invoice?" : modal === "reject" ? "Reject this invoice?" : "Stop this payment?"}

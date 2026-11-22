@@ -515,3 +515,13 @@ export type PaymentsPage = {
   going_out: { count: number; total_cad_cents: number };
   about_to_pay_twice: DoublePayment[];
 };
+
+/** Cmd+K search results (GET /search?q=). */
+export type SearchInvoice = {
+  invoice_id: string; vendor_id: string | null; vendor_name: string | null; vendor_invoice_number: string | null;
+  invoice_date: string | null; status: string; currency: string; total_cents: number | null; total_cad_cents: number | null;
+  is_credit_note: boolean;
+};
+export type SearchVendor = { vendor_id: string; legal_name: string; status: string; category: string; gst_hst_number: string | null;
+  lookalike_of: string | null };
+export type SearchResults = { invoices: SearchInvoice[]; vendors: SearchVendor[] };

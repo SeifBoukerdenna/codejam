@@ -1,9 +1,10 @@
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Button, Form, Input, Modal, Radio, Select } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { send, type VendorDetail as Data } from "../api";
 import { ReasonModal, useRunner } from "../components/actions";
+import { rememberVisit } from "../components/CommandPalette";
 import { ActionButton, Avatar, EntityHead, Hero, Loading, Money, Notice, Page, Panel, Pill, Row, Section, Stat, Tiles } from "../components/ui";
 import { INVOICE_STATUS, METHOD, VENDOR_STATUS, longDate, money, plural, shortDate, statusOf } from "../format";
 import { useApi, useSession } from "../session";
@@ -31,7 +32,12 @@ export default function VendorDetail() {
   const [holding, setHolding] = useState(false);
   const [changing, setChanging] = useState(false);
   const [verifying, setVerifying] = useState<string | null>(null);
-  if (!data || data.vendor.vendor_id !== vendorId) return <Loading error={error} />;
+  const loaded = data && data.vendor.vendor_id === vendorId ? data.vendor : null;
+  useEffect(() => {
+    if (loaded) rememberVisit({ key: loaded.vendor_id, kind: "vendor", to: `/vendors/${loaded.vendor_id}`, title: loaded.legal_name,
+      sub: `Vendor ${loaded.vendor_id} · ${loaded.category}` });
+  }, [loaded?.vendor_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!data || !loaded) return <Loading error={error} />;
 
   const v = data.vendor;
   const act = data.actions;

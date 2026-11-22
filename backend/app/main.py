@@ -9,11 +9,11 @@ from fastapi import Depends, FastAPI
 
 from app import config
 from app.db import get_conn
-from app.routes import activity, bank, fool, home, inbox, invoices, payments, vendors
+from app.routes import activity, bank, fool, home, inbox, invoices, payments, search, vendors
 
 app = FastAPI(title="Harborline AP")
 
-for module in (home, inbox, invoices, payments, vendors, activity, fool, bank):
+for module in (home, inbox, invoices, payments, vendors, activity, fool, bank, search):
     app.include_router(module.router)
 
 SEEDED_TABLES = [

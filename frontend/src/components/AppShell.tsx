@@ -1,4 +1,4 @@
-import { AuditOutlined, BankOutlined, CheckCircleOutlined, ExperimentOutlined, HomeOutlined, InboxOutlined, ShopOutlined, SwapOutlined } from "@ant-design/icons";
+import { AuditOutlined, BankOutlined, CheckCircleOutlined, ExperimentOutlined, HomeOutlined, InboxOutlined, SearchOutlined, ShopOutlined, SwapOutlined } from "@ant-design/icons";
 import { Select } from "antd";
 import { useEffect, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
@@ -6,7 +6,8 @@ import type { HomeData } from "../api";
 import { ROLE, longDate } from "../format";
 import { useApi, useSession } from "../session";
 import { CHANGED } from "./actions";
-import { Avatar } from "./ui";
+import CommandPalette, { OPEN_PALETTE, PALETTE_KEYS } from "./CommandPalette";
+import { Avatar, Kbd } from "./ui";
 
 type Item = { to: string; label: string; short?: string; icon: ReactNode; end?: boolean; count?: number };
 
@@ -41,6 +42,9 @@ export default function AppShell() {
     <div className="shell">
       <aside className="sidebar">
         <NavLink to="/" className="brand"><span className="brand-mark">H</span>Harborline</NavLink>
+        <button className="search-button" onClick={openPalette}>
+          <SearchOutlined aria-hidden /><span className="grow">Search</span><Kbd>{PALETTE_KEYS}</Kbd>
+        </button>
         <nav className="side-nav">
           {nav.map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end}>
@@ -57,10 +61,12 @@ export default function AppShell() {
 
       <header className="mobile-top">
         <NavLink to="/" className="brand brand-compact"><span className="brand-mark">H</span>Harborline</NavLink>
+        <button className="icon-button" aria-label="Search, or switch user" onClick={openPalette}><SearchOutlined /></button>
         <UserSwitcher compact />
       </header>
 
       <main className="main"><Outlet /></main>
+      <CommandPalette />
 
       <nav className="tabbar">
         {nav.map((n) => (
@@ -70,6 +76,8 @@ export default function AppShell() {
     </div>
   );
 }
+
+const openPalette = () => window.dispatchEvent(new Event(OPEN_PALETTE));
 
 // DECISION: demo login is a user picker. Switching user is how separation of duties is shown live
 // (approve as Elise, then try to release the payment as Elise and get refused by the server).
